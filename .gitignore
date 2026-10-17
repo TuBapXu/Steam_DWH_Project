@@ -1,0 +1,12 @@
+# Bảo mật mật khẩu SQL Server
+.env
+
+# Bỏ qua file dữ liệu (GitHub sẽ chặn đẩy file > 100MB)
+*.csv
+*.json
+steam_games.csv
+
+# Bỏ qua log và cache của Mage, Python, VS Code
+__pycache__/
+.vscode/
+.mage_temp/

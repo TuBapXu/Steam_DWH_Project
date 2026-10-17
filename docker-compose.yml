@@ -1,0 +1,26 @@
+version: '3.8'
+services:
+  mage:
+    image: mageai/mageai:latest
+    ports:
+      - "6789:6789"
+    volumes:
+      - .:/home/src/
+    environment:
+      - USER_CODE_PATH=/home/src/mage_pipeline
+    depends_on:
+      - sqlserver
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    ports:
+      - "1433:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${MSSQL_PASSWORD}
+      - MSSQL_PID=Developer
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+
+volumes:
+  sqlserver_data:
