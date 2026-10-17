@@ -1,6 +1,6 @@
 # Bí mật
 .env
-
+.gitignore
 # Dữ liệu
 data/
 *.csv

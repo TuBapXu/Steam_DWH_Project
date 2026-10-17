@@ -1,7 +1,7 @@
 version: '3.8'
 services:
   mage:
-    image: mageai/mageai:latest
+    build: .
     ports:
       - "6789:6789"
     volumes:
@@ -14,7 +14,7 @@ services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     ports:
-      - "1433:1433"
+      - "1435:1433"
     environment:
       - ACCEPT_EULA=Y
       - MSSQL_SA_PASSWORD=${MSSQL_PASSWORD}

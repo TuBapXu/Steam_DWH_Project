@@ -1,0 +1,9 @@
+version: 0.1.1
+default:
+  # --- Cấu hình kết nối SQL Server ---
+  MSSQL_HOST: sqlserver
+  MSSQL_PORT: 1433
+  MSSQL_USER: sa
+  MSSQL_PASSWORD: "thanhtu185B#2005"
+  MSSQL_DATABASE: steam_games_DWH
+  MSSQL_DRIVER: 'ODBC Driver 17 for SQL Server'
