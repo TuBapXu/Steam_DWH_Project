@@ -91,11 +91,7 @@ Tải **Steam Games Dataset** (`games.csv`) từ Kaggle và đặt tại `data/g
 
 ### 3. Cấu hình biến môi trường
 
-```bash
-cp .env.example .env
-```
-
-Mở `.env` và đặt mật khẩu SQL Server (đủ mạnh: tối thiểu 8 ký tự, có chữ hoa, chữ thường, số, ký tự đặc biệt):
+Tạo `.env` và đặt mật khẩu SQL Server (đủ mạnh: tối thiểu 8 ký tự, có chữ hoa, chữ thường, số, ký tự đặc biệt):
 
 ```dotenv
 MSSQL_PASSWORD=your_password_here
@@ -121,14 +117,12 @@ docker compose up -d
 
 Trong SSMS, kết nối `localhost,1435` và chạy lần lượt các script trong `database_setup/`:
 
-1. Tạo database `steam_games_DWH`
-2. Tạo bảng `etl_watermark` và `etl_audit_log`
-3. Tạo bảng `stg_steam_games` (40 cột dữ liệu và 2 cột kỹ thuật `_loaded_at`, `_run_mode`)
-4. Đặt watermark ban đầu gần ngày phát hành nhỏ nhất của dữ liệu:
+1. Chạy script 01_init_watermark_audit trong database_setup
+2. Đặt watermark ban đầu gần ngày phát hành nhỏ nhất của dữ liệu:
 
 ```sql
 UPDATE steam_games_DWH.dbo.etl_watermark
-SET lset = '1997-01-01'
+SET lset = '2010-01-01'
 WHERE table_name = 'stg_steam_games';
 ```
 
@@ -136,7 +130,8 @@ WHERE table_name = 'stg_steam_games';
 
 1. Mở Mage UI, chọn pipeline `steam_staging_pipeline`.
 2. Đặt biến `run_mode` (`full` hoặc `incremental`).
-3. Chạy toàn bộ pipeline (không chạy riêng từng block).
+3. Thêm biến demo_lset và demo_cet nếu cần
+4. Chạy toàn bộ pipeline (không chạy riêng từng block).
 
 ## Kiểm tra kết quả
 
@@ -178,4 +173,6 @@ Mage.ai, SQL Server, Docker Compose, Python (pandas, pyodbc), dbt (dự kiến).
 
 ## Tác giả
 
-`<Tên của bạn>` - `<Mã số sinh viên / Lớp>` - `<Tên môn học, trường>`
+1. `Phạm Lê Thanh Tú` - `23120388` - `HCMUS`
+2. `Kiều Đỗ Song Tinh` - `23120373` - `HCMUS`
+3. `Nguyễn Ngọc Bình` - `23120218` - `HCMUS`
