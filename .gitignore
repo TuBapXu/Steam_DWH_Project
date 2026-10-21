@@ -1,6 +1,5 @@
 # Bí mật
 .env
-.gitignore
 # Dữ liệu
 data/
 *.csv
@@ -22,3 +21,9 @@ sqlserver_data/
 # Hệ điều hành / IDE
 .DS_Store
 .vscode/
+
+# dbt generated artifacts
+dbt_transform/target/
+dbt_transform/logs/
+dbt_transform/dbt_packages/
+dbt_transform/.user.yml

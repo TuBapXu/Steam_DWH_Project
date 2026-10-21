@@ -1,0 +1,12 @@
+version: 2
+
+sources:
+  - name: staging_source
+    database: "{{ env_var('STAGING_DATABASE', target.database) }}"
+    schema: "{{ env_var('STAGING_SCHEMA', 'dbo') }}"
+    tables:
+      - name: stg_steam_games
+        description: "Bảng dữ liệu thô nạp từ CSV bởi Mage.ai"
+        columns:
+          - name: appid
+            data_tests: [unique, not_null]

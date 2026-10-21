@@ -1,0 +1,10 @@
+.git
+.env
+.env.*
+data
+mage_data
+mage_pipeline/.file_versions
+dbt_transform/target
+dbt_transform/logs
+dbt_transform/dbt_packages
+**/__pycache__
