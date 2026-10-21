@@ -1,0 +1,112 @@
+version: 2
+
+models:
+  - name: stg_steam_games_standardized
+    description: "Model ephemeral: ép kiểu an toàn và chuẩn hóa văn bản của 42 cột nguồn; không tạo bảng/view."
+  - name: stg_steam_games_cleaned
+    description: "Một dòng cho mỗi AppID dương; dữ liệu sạch phục vụ xây dựng DWH."
+    columns:
+      - name: game_id
+        description: "AppID dương, duy nhất và không NULL."
+        data_tests:
+          - unique
+          - not_null
+          - valid_range:
+              arguments: {min_value: 1}
+      - name: game_title
+        description: "Tên thiếu được thay bằng Unknown game <AppID>; có cờ is_title_missing."
+        data_tests: [not_null, normalized_text]
+      - name: is_title_missing
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments: {values: [0, 1], quote: false}
+      - name: is_free
+        description: "1: giá bằng 0; 0: giá dương; NULL: giá thiếu/không hợp lệ."
+        data_tests:
+          - accepted_values:
+              arguments: {values: [0, 1], quote: false}
+      - name: price
+        description: "Giữ NULL nếu thiếu hoặc âm; không suy diễn thành miễn phí."
+        data_tests: [valid_range]
+      - name: discount_percentage
+        data_tests:
+          - valid_range:
+              arguments: {min_value: 0, max_value: 100}
+      - name: positive_reviews
+        data_tests: [valid_range]
+      - name: negative_reviews
+        data_tests: [valid_range]
+      - name: positive_review_ratio
+        description: "positive / (positive + negative); NULL khi tổng bằng 0 hoặc có số đếm không hợp lệ."
+        data_tests:
+          - valid_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: metacritic_score
+        data_tests:
+          - valid_range:
+              arguments: {min_value: 1, max_value: 100}
+      - name: user_score
+        description: "Giữ nguyên thang điểm nguồn; giá trị <= 0 được xem là chưa có điểm."
+        data_tests: [valid_range]
+      - name: required_age
+        data_tests: [valid_range]
+      - name: dlc_count
+        data_tests: [valid_range]
+      - name: achievements_count
+        data_tests: [valid_range]
+      - name: recommendations_count
+        data_tests: [valid_range]
+      - name: peak_ccu
+        data_tests: [valid_range]
+      - name: avg_playtime_forever_mins
+        data_tests: [valid_range]
+      - name: avg_playtime_two_weeks_mins
+        data_tests: [valid_range]
+      - name: median_playtime_forever_mins
+        data_tests: [valid_range]
+      - name: median_playtime_two_weeks_mins
+        data_tests: [valid_range]
+      - name: release_month
+        data_tests:
+          - valid_range:
+              arguments: {min_value: 1, max_value: 12}
+      - name: supports_windows
+        data_tests:
+          - accepted_values:
+              arguments: {values: [0, 1], quote: false}
+      - name: supports_mac
+        data_tests:
+          - accepted_values:
+              arguments: {values: [0, 1], quote: false}
+      - name: supports_linux
+        data_tests:
+          - accepted_values:
+              arguments: {values: [0, 1], quote: false}
+      - name: developers
+        data_tests: [normalized_text]
+      - name: publishers
+        data_tests: [normalized_text]
+      - name: categories
+        data_tests: [normalized_text]
+      - name: genres
+        data_tests: [normalized_text]
+      - name: tags
+        data_tests: [normalized_text]
+  - name: stg_steam_game_classifications
+    description: "Chuẩn hóa danh sách category/genre/tag thành các dòng, chuyển chữ thường và loại trùng."
+    columns:
+      - name: game_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_steam_games_cleaned')
+                field: game_id
+      - name: classification_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments: {values: [category, genre, tag]}
+      - name: classification_value
+        data_tests: [not_null, normalized_text]

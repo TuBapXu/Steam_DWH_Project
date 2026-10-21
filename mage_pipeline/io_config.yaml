@@ -4,6 +4,6 @@ default:
   MSSQL_HOST: sqlserver
   MSSQL_PORT: 1433
   MSSQL_USER: sa
-  MSSQL_PASSWORD: "thanhtu185B#2005"
+  MSSQL_PASSWORD: "{{ env_var('MSSQL_PASSWORD') }}"
   MSSQL_DATABASE: steam_games_DWH
   MSSQL_DRIVER: 'ODBC Driver 17 for SQL Server'

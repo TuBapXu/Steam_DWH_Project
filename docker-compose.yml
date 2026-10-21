@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   mage:
     build: .
@@ -8,6 +7,7 @@ services:
       - .:/home/src/
     environment:
       - USER_CODE_PATH=/home/src/mage_pipeline
+      - MSSQL_PASSWORD=${MSSQL_PASSWORD:?Set MSSQL_PASSWORD in .env}
     depends_on:
       - sqlserver
 
@@ -17,10 +17,27 @@ services:
       - "1435:1433"
     environment:
       - ACCEPT_EULA=Y
-      - MSSQL_SA_PASSWORD=${MSSQL_PASSWORD}
+      - MSSQL_SA_PASSWORD=${MSSQL_PASSWORD:?Set MSSQL_PASSWORD in .env}
       - MSSQL_PID=Developer
     volumes:
       - sqlserver_data:/var/opt/mssql
+
+  dbt:
+    build:
+      context: .
+      dockerfile: dbt_transform/Dockerfile
+    profiles: ["transform"]
+    working_dir: /workspace/dbt_transform
+    volumes:
+      - .:/workspace
+    env_file: .env
+    environment:
+      DBT_PROFILES_DIR: /workspace/dbt_transform
+      DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
+    depends_on:
+      - sqlserver
+    entrypoint: ["dbt"]
+    command: ["--version"]
 
 volumes:
   sqlserver_data:
