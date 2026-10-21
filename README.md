@@ -5,19 +5,25 @@
 | Giai đoạn | Công cụ | Trạng thái |
 |---|---|---|
 | 3.1 Data Ingestion (nạp vào Staging) | Mage.ai + SQL Server | Hoàn thành |
-| 3.2 Data Transformation | dbt | Chưa thực hiện |
+| 3.2 Data Transformation | dbt | Đã triển khai profile, model làm sạch/chuẩn hóa và kiểm thử; xem hướng dẫn bên dưới |
 | 3.3 Data Warehouse (Star Schema) | SQL Server | Chưa thực hiện |
 
 ## Kiến trúc
 
 ```
 games.csv ──► Mage.ai pipeline ──► SQL Server (steam_games_DWH)
-                                     ├── dbo.stg_steam_games   (Staging)
+                                     ├── dbo.stg_steam_games   (Staging, nguồn của dbt)
                                      ├── dbo.etl_watermark     (điều khiển incremental)
                                      └── dbo.etl_audit_log     (nhật ký thực thi)
+
+dbo.stg_steam_games ──► dbt ──► dbt_staging.stg_steam_games_cleaned
+                                       │
+                                       └──► dbt_staging.stg_steam_game_classifications
 ```
 
-Toàn bộ chạy trong Docker Compose gồm hai service: `mage` và `sqlserver`.
+Docker Compose gồm `mage`, `sqlserver` và service `dbt` chạy theo yêu cầu.
+
+Tài liệu giải thích cấu hình kết nối, quy tắc làm sạch và kiểm thử: **[docs/DBT_GIAI_THICH.md](docs/DBT_GIAI_THICH.md)**.
 
 ## Cấu trúc thư mục
 
@@ -26,7 +32,8 @@ Steam_DWH_Project/
 ├── bi_dashboard/        # (Dự kiến) dashboard BI
 ├── data/                # Chứa games.csv (KHÔNG đẩy lên Git)
 ├── database_setup/      # Script SQL khởi tạo database, bảng staging, watermark, audit
-├── dbt_transform/       # (Dự kiến) dự án dbt cho giai đoạn 3.2
+├── dbt_transform/       # Profile, 3 model, macro, data test và script kiểm thử dbt
+├── docs/                # Giải thích triển khai và cách chạy dbt
 ├── mage_pipeline/       # Dự án Mage.ai
 │   ├── data_loaders/    # extract_steam_games: đọc CSV, chia batch Full/Incremental
 │   ├── transformers/    # validate_clean: kiểm tra cấu trúc, chất lượng, làm sạch cơ bản
@@ -91,11 +98,7 @@ Tải **Steam Games Dataset** (`games.csv`) từ Kaggle và đặt tại `data/g
 
 ### 3. Cấu hình biến môi trường
 
-```bash
-cp .env.example .env
-```
-
-Mở `.env` và đặt mật khẩu SQL Server (đủ mạnh: tối thiểu 8 ký tự, có chữ hoa, chữ thường, số, ký tự đặc biệt):
+Tạo `.env` và đặt mật khẩu SQL Server (đủ mạnh: tối thiểu 8 ký tự, có chữ hoa, chữ thường, số, ký tự đặc biệt):
 
 ```dotenv
 MSSQL_PASSWORD=your_password_here
@@ -121,14 +124,12 @@ docker compose up -d
 
 Trong SSMS, kết nối `localhost,1435` và chạy lần lượt các script trong `database_setup/`:
 
-1. Tạo database `steam_games_DWH`
-2. Tạo bảng `etl_watermark` và `etl_audit_log`
-3. Tạo bảng `stg_steam_games` (40 cột dữ liệu và 2 cột kỹ thuật `_loaded_at`, `_run_mode`)
-4. Đặt watermark ban đầu gần ngày phát hành nhỏ nhất của dữ liệu:
+1. Chạy script 01_init_watermark_audit trong database_setup
+2. Đặt watermark ban đầu gần ngày phát hành nhỏ nhất của dữ liệu:
 
 ```sql
 UPDATE steam_games_DWH.dbo.etl_watermark
-SET lset = '1997-01-01'
+SET lset = '2010-01-01'
 WHERE table_name = 'stg_steam_games';
 ```
 
@@ -136,7 +137,32 @@ WHERE table_name = 'stg_steam_games';
 
 1. Mở Mage UI, chọn pipeline `steam_staging_pipeline`.
 2. Đặt biến `run_mode` (`full` hoặc `incremental`).
-3. Chạy toàn bộ pipeline (không chạy riêng từng block).
+3. Thêm biến demo_lset và demo_cet nếu cần
+4. Chạy toàn bộ pipeline (không chạy riêng từng block).
+
+### 7. Chạy dbt sau khi nạp Staging
+
+Từ thư mục gốc dự án, dùng mật khẩu hiện có trong `.env`:
+
+```powershell
+docker compose build dbt
+docker compose up -d sqlserver
+docker compose run --rm --no-deps dbt debug
+docker compose run --rm --no-deps dbt build
+```
+
+`dbt build` kiểm tra nguồn và tạo hai view trong `steam_games_DWH.dbt_staging`.
+Model chuẩn hóa trung gian là ephemeral, không tạo thêm bảng/view.
+Nếu staging rỗng, kiểm thử sẽ báo lỗi để tránh kết luận thành công khi chưa nạp dữ liệu.
+
+Kiểm thử các trường hợp dữ liệu lỗi trong schema riêng, tự dọn sau khi chạy:
+
+```powershell
+docker compose run --rm --no-deps --entrypoint python dbt scripts/verify_dbt.py
+```
+
+Các lệnh dbt không tự chạy pipeline Mage. Khi chưa có `data/games.csv`, có thể kiểm tra
+trên staging đã nạp trước đó và bộ dữ liệu giả lập, nhưng chưa thể xác nhận toàn bộ CSV.
 
 ## Kiểm tra kết quả
 
@@ -174,8 +200,10 @@ Kịch bản kiểm thử gợi ý:
 
 ## Công nghệ
 
-Mage.ai, SQL Server, Docker Compose, Python (pandas, pyodbc), dbt (dự kiến).
+Mage.ai, SQL Server, Docker Compose, Python (pandas, pyodbc), dbt Core + dbt-sqlserver.
 
 ## Tác giả
 
-`<Tên của bạn>` - `<Mã số sinh viên / Lớp>` - `<Tên môn học, trường>`
+1. `Phạm Lê Thanh Tú` - `23120388` - `HCMUS`
+2. `Kiều Đỗ Song Tinh` - `23120373` - `HCMUS`
+3. `Nguyễn Ngọc Bình` - `23120218` - `HCMUS`
