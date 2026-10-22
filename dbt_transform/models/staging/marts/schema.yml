@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: dim_games
+    description: "Bảng Dimension chứa các thuộc tính mô tả của trò chơi."
+    columns:
+      - name: game_id
+        description: "Khóa chính của bảng."
+        data_tests:
+          - unique
+          - not_null
+      - name: release_year
+        description: "Năm phát hành, dùng để phân tích chuỗi thời gian."
+
+  - name: fact_game_metrics
+    description: "Bảng Fact lưu các chỉ số (measures) để tính toán hiệu suất."
+    columns:
+      - name: game_id
+        description: "Khóa ngoại liên kết với dim_games."
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref('dim_games')
+              field: game_id
+      - name: total_reviews
+        description: "Tổng lượt đánh giá."
