@@ -6,7 +6,7 @@
 |---|---|---|
 | 3.1 Data Ingestion (nạp vào Staging) | Mage.ai + SQL Server | Hoàn thành |
 | 3.2 Data Transformation | dbt | Đã triển khai profile, model làm sạch/chuẩn hóa và kiểm thử; xem hướng dẫn bên dưới |
-| 3.3 Data Warehouse (Star Schema) | SQL Server | Chưa thực hiện |
+| 3.3 Data Warehouse (Star Schema) | SQL Server | Đã khởi tạo script DDL tạo Fact & 4 Dimension vật lý (`database_setup/02_create_star_schema_dwh.sql`) |
 
 ## Kiến trúc
 
