@@ -1,0 +1,224 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: >
+      Bảng chiều thời gian. Chứa toàn bộ ngày từ 2010-01-01 đến 2024-12-31,
+      phục vụ phân tích xu hướng (trend) và mùa vụ (seasonality).
+    columns:
+      - name: date_key
+        description: "Surrogate key dạng YYYYMMDD (ví dụ: 20201210). Khóa chính của bảng."
+        data_tests:
+          - unique
+          - not_null
+      - name: full_date
+        description: "Ngày đầy đủ dạng DATE."
+        data_tests:
+          - not_null
+      - name: month
+        description: "Tháng trong năm (1–12)."
+        data_tests:
+          - not_null
+          - valid_range:
+              arguments: {min_value: 1, max_value: 12}
+      - name: quarter
+        description: "Quý trong năm (1–4)."
+        data_tests:
+          - not_null
+          - valid_range:
+              arguments: {min_value: 1, max_value: 4}
+      - name: year
+        description: "Năm dương lịch (2010–2024)."
+        data_tests:
+          - not_null
+          - valid_range:
+              arguments: {min_value: 2010, max_value: 2024}
+      - name: season
+        description: "Mùa trong năm: Xuan (3-5), Ha (6-8), Thu (9-11), Dong (12,1,2)."
+        data_tests:
+          - not_null
+      - name: is_holiday
+        description: "Cờ ngày lễ: 1 = ngày lễ, 0 = ngày thường. Mặc định 0."
+
+  - name: dim_game
+    description: >
+      Bảng chiều sản phẩm (Dimension). Mỗi dòng = 1 tựa game duy nhất trên Steam.
+      Chứa các thuộc tính mô tả phục vụ phân tích và lọc trong BI.
+    columns:
+      - name: game_key
+        description: "Surrogate key (ROW_NUMBER theo appid_nk). Khóa chính nội bộ DWH."
+        data_tests:
+          - unique
+          - not_null
+      - name: appid_nk
+        description: "Business key — AppID gốc từ Steam. Duy nhất và không NULL."
+        data_tests:
+          - unique
+          - not_null
+          - valid_range:
+              arguments: {min_value: 1}
+      - name: game_name
+        description: "Tên tựa game. Giá trị NULL từ staging được thay bằng 'Unknown game <AppID>'."
+        data_tests:
+          - not_null
+      - name: required_age
+        description: "Độ tuổi tối thiểu để chơi. NULL nếu không có thông tin hoặc giá trị âm."
+        data_tests:
+          - valid_range:
+              arguments: {min_value: 0}
+      - name: genres
+        description: "Danh sách thể loại (chuỗi CSV nguyên bản, ví dụ: 'Action,RPG'). NULL nếu thiếu."
+      - name: categories
+        description: "Danh sách danh mục Steam (chuỗi CSV, ví dụ: 'Single-player,Co-op'). NULL nếu thiếu."
+      - name: supported_languages
+        description: "Danh sách ngôn ngữ hỗ trợ (chuỗi nguyên bản). NULL nếu thiếu."
+
+  - name: dim_platform
+    description: >
+      Bảng chiều nền tảng. Chứa 8 tổ hợp cố định của Windows / Mac / Linux.
+      Được xây dựng tĩnh (không từ DISTINCT data) để đảm bảo mọi tổ hợp tồn tại
+      và Fact table luôn JOIN được.
+    columns:
+      - name: platform_key
+        description: "Surrogate key (ROW_NUMBER). Khóa chính. Tối đa 8 dòng."
+        data_tests:
+          - unique
+          - not_null
+      - name: platform_combo
+        description: "Nhãn mô tả tổ hợp nền tảng: Windows Only, Win & Mac, Cross-platform, ..."
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Cross-platform'
+                  - 'Win & Mac'
+                  - 'Win & Linux'
+                  - 'Windows Only'
+                  - 'Mac & Linux'
+                  - 'Mac Only'
+                  - 'Linux Only'
+                  - 'Unknown'
+      - name: is_windows
+        description: "1 nếu hỗ trợ Windows, 0 nếu không."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments: {values: [0, 1], quote: false}
+      - name: is_mac
+        description: "1 nếu hỗ trợ macOS, 0 nếu không."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments: {values: [0, 1], quote: false}
+      - name: is_linux
+        description: "1 nếu hỗ trợ Linux, 0 nếu không."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments: {values: [0, 1], quote: false}
+
+  - name: dim_publisher
+    description: >
+      Bảng chiều nhà phát hành và studio phát triển. Publisher được trích xuất từ
+      publisher đầu tiên trong chuỗi CSV. Phân tầng AAA/Indie dựa trên số lượng game
+      trong dataset (>= 10 game = AAA).
+    columns:
+      - name: publisher_key
+        description: "Surrogate key (ROW_NUMBER theo publisher_name). Khóa chính."
+        data_tests:
+          - unique
+          - not_null
+      - name: publisher_name
+        description: "Tên nhà phát hành chính (publisher đầu tiên trong chuỗi CSV)."
+        data_tests:
+          - unique
+          - not_null
+      - name: developer_name
+        description: "Tên studio phát triển chính (developer đầu tiên). NULL nếu không có thông tin."
+      - name: publisher_tier
+        description: "'AAA' nếu publisher có >= 10 game trong dataset; 'Indie' nếu < 10 game."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments: {values: ['AAA', 'Indie']}
+
+  - name: fact_game_snapshot
+    description: >
+      Bảng Fact dạng Periodic Snapshot — trung tâm của Star Schema.
+      Grain: 1 dòng = 1 tựa game tại thời điểm nạp dữ liệu vào DWH.
+      Chứa 4 khóa ngoại (FK) tham chiếu đến 4 Dimension và 8 measures phục vụ BI.
+    columns:
+      - name: date_key
+        description: >
+          FK → dim_date.date_key. Ngày phát hành dạng YYYYMMDD.
+          NULL nếu release_date nằm ngoài khoảng 2010–2024 hoặc không có ngày.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: game_key
+        description: "FK → dim_game.game_key. Không NULL (INNER JOIN với dim_game)."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: game_key
+      - name: platform_key
+        description: "FK → dim_platform.platform_key. Không NULL (INNER JOIN với dim_platform)."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_platform')
+                field: platform_key
+      - name: publisher_key
+        description: "FK → dim_publisher.publisher_key. NULL nếu game không có thông tin publisher."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_publisher')
+                field: publisher_key
+      - name: price
+        description: "Giá bán lẻ (USD). Non-additive. NULL nếu thiếu hoặc âm."
+        data_tests:
+          - valid_range:
+              arguments: {min_value: 0}
+      - name: discount
+        description: "Mức giảm giá (%). Non-additive. NULL nếu ngoài khoảng 0–100."
+        data_tests:
+          - valid_range:
+              arguments: {min_value: 0, max_value: 100}
+      - name: peak_ccu
+        description: "Số người chơi đồng thời cao nhất (Concurrent Users). Semi-additive."
+        data_tests:
+          - valid_range:
+              arguments: {min_value: 0}
+      - name: positive_reviews
+        description: "Tổng lượt đánh giá tích cực. Additive."
+        data_tests:
+          - valid_range:
+              arguments: {min_value: 0}
+      - name: negative_reviews
+        description: "Tổng lượt đánh giá tiêu cực. Additive."
+        data_tests:
+          - valid_range:
+              arguments: {min_value: 0}
+      - name: metacritic_score
+        description: "Điểm Metacritic (1–100). Non-additive. NULL nếu không có điểm."
+        data_tests:
+          - valid_range:
+              arguments: {min_value: 1, max_value: 100}
+      - name: user_score
+        description: "Điểm đánh giá từ người dùng. Non-additive. NULL nếu không có."
+        data_tests:
+          - valid_range:
+              arguments: {min_value: 0}
+      - name: average_playtime
+        description: "Thời gian chơi trung bình tính từ lúc phát hành (phút). Non-additive."
+        data_tests:
+          - valid_range:
+              arguments: {min_value: 0}

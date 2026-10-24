@@ -19,3 +19,6 @@ models:
   steam_dwh:
     staging:
       +materialized: view
+    marts:
+      +materialized: table
+      +schema: dwh
