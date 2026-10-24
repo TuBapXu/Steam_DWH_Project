@@ -107,6 +107,7 @@ tags: []
 type: python
 uuid: steam_staging_pipeline
 variables:
+  demo_cet: '2012-01-01'
   demo_lset: '2010-01-01'
   run_mode: incremental
 variables_dir: /home/src/mage_data/mage_pipeline
