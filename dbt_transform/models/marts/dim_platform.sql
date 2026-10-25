@@ -7,24 +7,21 @@
     )
 }}
 
--- Chiều nền tảng: 8 tổ hợp cố định Windows / Mac / Linux
--- Dùng danh sách tĩnh (không DISTINCT từ data) để đảm bảo
--- mọi tổ hợp đều tồn tại → Fact luôn JOIN được
--- Bảng này chỉ có 8 dòng, hiếm khi thay đổi
+-- Chiều nền tảng gồm 8 tổ hợp cố định Windows / Mac / Linux.
+-- Giữ platform_key ổn định; incremental chỉ thêm tổ hợp chưa có để tránh
+-- DELETE các hàng đang được fact_game_snapshot tham chiếu bằng khóa ngoại.
 with platform_combos as (
-    select 1 as is_windows, 1 as is_mac, 1 as is_linux
-    union all select 1, 1, 0
-    union all select 1, 0, 1
-    union all select 1, 0, 0
-    union all select 0, 1, 1
-    union all select 0, 1, 0
-    union all select 0, 0, 1
-    union all select 0, 0, 0
+    select 1 as platform_key, 1 as is_windows, 1 as is_mac, 1 as is_linux
+    union all select 2, 1, 1, 0
+    union all select 3, 1, 0, 1
+    union all select 4, 1, 0, 0
+    union all select 5, 0, 1, 1
+    union all select 6, 0, 1, 0
+    union all select 7, 0, 0, 1
+    union all select 8, 0, 0, 0
 )
 select
-    row_number() over (
-        order by is_windows desc, is_mac desc, is_linux desc
-    )                           as platform_key,
+    platform_key,
     case
         when is_windows = 1 and is_mac = 1 and is_linux = 1 then 'Cross-platform'
         when is_windows = 1 and is_mac = 1 and is_linux = 0 then 'Win & Mac'
@@ -39,3 +36,10 @@ select
     cast(is_mac     as bit)     as is_mac,
     cast(is_linux   as bit)     as is_linux
 from platform_combos
+{% if is_incremental() %}
+where not exists (
+    select 1
+    from {{ this }} existing
+    where existing.platform_key = platform_combos.platform_key
+)
+{% endif %}
