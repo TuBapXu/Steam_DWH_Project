@@ -162,3 +162,7 @@ PRINT '=========================================================================
 PRINT '=> HOAN THANH: Toan bo cau truc Star Schema (dwh) da duoc khoi tao!';
 PRINT '   Buoc tiep theo: Chay dbt run de nap du lieu tu Staging vao DWH.';
 PRINT '=========================================================================';
+
+USE steam_games_DWH;
+GO
+SELECT* FROM dwh.fact_game_snapshot;

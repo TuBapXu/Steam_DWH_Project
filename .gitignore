@@ -9,6 +9,8 @@ data/
 .logs/
 .variables/
 mage_data/
+mage_pipeline/.file_versions/
+mage_pipeline/.ssh_tunnel/
 
 # Python
 __pycache__/

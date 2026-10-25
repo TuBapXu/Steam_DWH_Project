@@ -1,7 +1,8 @@
 blocks:
 - all_upstream_blocks_executed: true
   color: null
-  configuration: {}
+  configuration:
+    disable_output_preview: true
   downstream_blocks:
   - validate_clean
   executor_config: null
@@ -9,7 +10,7 @@ blocks:
   has_callback: false
   language: python
   name: extract_steam_games
-  retry_config: null
+  retry_config: {}
   status: executed
   timeout: null
   type: data_loader
@@ -17,7 +18,8 @@ blocks:
   uuid: extract_steam_games
 - all_upstream_blocks_executed: true
   color: null
-  configuration: {}
+  configuration:
+    disable_output_preview: true
   downstream_blocks:
   - load_to_staging
   executor_config: null
@@ -25,7 +27,7 @@ blocks:
   has_callback: false
   language: python
   name: validate clean
-  retry_config: null
+  retry_config: {}
   status: executed
   timeout: null
   type: transformer
@@ -34,7 +36,8 @@ blocks:
   uuid: validate_clean
 - all_upstream_blocks_executed: true
   color: null
-  configuration: {}
+  configuration:
+    disable_output_preview: true
   downstream_blocks:
   - update_watermark_audit
   executor_config: null
@@ -42,7 +45,7 @@ blocks:
   has_callback: false
   language: python
   name: load_to_staging
-  retry_config: null
+  retry_config: {}
   status: executed
   timeout: null
   type: data_exporter
@@ -51,14 +54,15 @@ blocks:
   uuid: load_to_staging
 - all_upstream_blocks_executed: true
   color: null
-  configuration: {}
+  configuration:
+    disable_output_preview: true
   downstream_blocks: []
   executor_config: null
   executor_type: local_python
   has_callback: false
   language: python
   name: update_watermark_audit
-  retry_config: null
+  retry_config: {}
   status: executed
   timeout: null
   type: data_exporter
@@ -107,8 +111,8 @@ tags: []
 type: python
 uuid: steam_staging_pipeline
 variables:
-  demo_cet: '2012-01-01'
-  demo_lset: '2010-01-01'
+  demo_cet: '2013-01-01'
+  demo_lset: '2012-01-01'
   run_mode: incremental
 variables_dir: /home/src/mage_data/mage_pipeline
 widgets: []
