@@ -4,9 +4,9 @@
 
 | Giai đoạn | Công cụ | Trạng thái |
 |---|---|---|
-| 3.1 Data Ingestion (nạp vào Staging) | Mage.ai + SQL Server | Hoàn thành |
-| 3.2 Data Transformation | dbt | Đã triển khai profile, model làm sạch/chuẩn hóa và kiểm thử; xem hướng dẫn bên dưới |
-| 3.3 Data Warehouse (Star Schema) | SQL Server | Đã khởi tạo script DDL tạo Fact & 4 Dimension vật lý (`database_setup/02_create_star_schema_dwh.sql`) |
+| 3.1 Data Ingestion (nạp vào Staging) | Mage.ai + SQL Server | Pipeline hỗ trợ Full Load và Incremental Load; Incremental đã chạy theo batch, Full Load cần xác nhận hoàn tất trên máy 8 GB RAM |
+| 3.2 Data Transformation | dbt | Đã triển khai các model làm sạch, chuẩn hóa, marts và tests; các model incremental ở marts vừa được điều chỉnh, cần chạy lại để xác nhận |
+| 3.3 Data Warehouse (Star Schema) | SQL Server | Có script DDL tạo Fact và 4 Dimension (`database_setup/02_create_star_schema_dwh.sql`) |
 
 ## Kiến trúc
 
@@ -19,11 +19,13 @@ games.csv ──► Mage.ai pipeline ──► SQL Server (steam_games_DWH)
 dbo.stg_steam_games ──► dbt ──► dbt_staging.stg_steam_games_cleaned
                                        │
                                        └──► dbt_staging.stg_steam_game_classifications
+                                       │
+                                       └──► dwh.dim_* ──► dwh.fact_game_snapshot
 ```
 
 Docker Compose gồm `mage`, `sqlserver` và service `dbt` chạy theo yêu cầu.
 
-Tài liệu giải thích cấu hình kết nối, quy tắc làm sạch và kiểm thử: **[docs/DBT_GIAI_THICH.md](docs/DBT_GIAI_THICH.md)**.
+Các bước cấu hình, khởi tạo database và chạy pipeline/dbt được hướng dẫn trong mục [Hướng dẫn cài đặt và chạy](#hướng-dẫn-cài-đặt-và-chạy) bên dưới.
 
 ## Cấu trúc thư mục
 
@@ -32,8 +34,7 @@ Steam_DWH_Project/
 ├── bi_dashboard/        # (Dự kiến) dashboard BI
 ├── data/                # Chứa games.csv (KHÔNG đẩy lên Git)
 ├── database_setup/      # Script SQL khởi tạo database, bảng staging, watermark, audit
-├── dbt_transform/       # Profile, 3 model, macro, data test và script kiểm thử dbt
-├── docs/                # Giải thích triển khai và cách chạy dbt
+├── dbt_transform/       # Profile, models staging/marts, macro, tests và script kiểm thử dbt
 ├── mage_pipeline/       # Dự án Mage.ai
 │   ├── data_loaders/    # extract_steam_games: đọc CSV, chia batch Full/Incremental
 │   ├── transformers/    # validate_clean: kiểm tra cấu trúc, chất lượng, làm sạch cơ bản
@@ -42,6 +43,7 @@ Steam_DWH_Project/
 │   ├── pipelines/       # Định nghĩa pipeline steam_staging_pipeline
 │   ├── io_config.yaml   # Cấu hình kết nối SQL Server (đọc mật khẩu từ biến môi trường)
 │   └── metadata.yaml
+├── .env.example         # Mẫu cấu hình; sao chép thành .env rồi tự điền mật khẩu
 ├── .env                 # Biến môi trường, chứa mật khẩu (KHÔNG đẩy lên Git)
 ├── .gitignore
 ├── docker-compose.yml
@@ -92,27 +94,36 @@ Mỗi lần chạy ghi một dòng vào `dbo.etl_audit_log` gồm `pipeline_name
 
 ### 2. Chuẩn bị dữ liệu
 
-Tải **Steam Games Dataset** (`games.csv`) từ Kaggle và đặt tại `data/games.csv`.
+Tải [Steam Games Dataset trên Kaggle](https://www.kaggle.com/datasets/fronkongames/steam-games-dataset), lấy file `games.csv` và đặt tại `data/games.csv`.
+
+Không commit file CSV lên Git; `.gitignore` đã loại `data/` và các file `*.csv`.
 
 > Lưu ý: header của file gốc bị thiếu dấu phẩy (`DiscountDLC count` thay vì `Discount`, `DLC count`). Block `extract_steam_games` đặt tên 40 cột thủ công khi đọc file để tránh lệch cột.
 
 ### 3. Cấu hình biến môi trường
 
-Tạo `.env` và đặt mật khẩu SQL Server (đủ mạnh: tối thiểu 8 ký tự, có chữ hoa, chữ thường, số, ký tự đặc biệt):
+Từ thư mục gốc project, sao chép file mẫu rồi sửa mật khẩu trong `.env`:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Giữ lại các mặc định trong file và thay giá trị mẫu `MSSQL_PASSWORD` bằng mật khẩu đủ mạnh theo yêu cầu của SQL Server:
 
 ```dotenv
-MSSQL_PASSWORD=your_password_here
+MSSQL_PASSWORD=replace_with_your_sql_server_password
 ```
 
 Không đặt dấu ngoặc kép quanh giá trị. Nên tránh ký tự `#` trong mật khẩu vì một số trình đọc `.env` coi đó là chú thích.
 
 ### 4. Khởi động hệ thống
 
-```bash
-docker compose up -d
+```powershell
+docker compose up -d --build
+docker compose ps
 ```
 
-Đợi khoảng 30 giây để SQL Server khởi động hoàn tất.
+Đợi SQL Server khởi động hoàn tất; có thể theo dõi bằng `docker compose logs -f sqlserver`. Service `dbt` dùng profile `transform` và được chạy theo yêu cầu bằng `docker compose run`, không cần khởi động nền.
 
 | Dịch vụ | Địa chỉ |
 |---|---|
@@ -122,10 +133,11 @@ docker compose up -d
 
 ### 5. Khởi tạo database
 
-Trong SSMS, kết nối `localhost,1435` và chạy lần lượt các script trong `database_setup/`:
+Trong SSMS, kết nối `localhost,1435` và chạy lần lượt hai script trong `database_setup/`:
 
-1. Chạy script 01_init_watermark_audit trong database_setup
-2. Đặt watermark ban đầu gần ngày phát hành nhỏ nhất của dữ liệu:
+1. `01_init_watermark_audit.sql` tạo database `steam_games_DWH`, bảng Staging, watermark và audit log.
+2. `02_create_star_schema_dwh.sql` tạo schema `dwh`, 4 Dimension và bảng Fact.
+3. Đặt watermark ban đầu cho chế độ Incremental:
 
 ```sql
 UPDATE steam_games_DWH.dbo.etl_watermark
@@ -136,24 +148,30 @@ WHERE table_name = 'stg_steam_games';
 ### 6. Chạy pipeline
 
 1. Mở Mage UI, chọn pipeline `steam_staging_pipeline`.
-2. Đặt biến `run_mode` (`full` hoặc `incremental`).
-3. Thêm biến demo_lset và demo_cet nếu cần
-4. Chạy toàn bộ pipeline (không chạy riêng từng block).
+2. Đặt biến `run_mode` (`full` hoặc `incremental`). Với máy có 8 GB RAM, ưu tiên Incremental theo batch vì Full Load từng đọc 125.853 dòng nhưng chưa được xác nhận hoàn tất.
+3. Thêm `demo_lset` và `demo_cet` nếu cần chạy batch thử nghiệm; chế độ demo không cập nhật watermark.
+4. Chạy toàn bộ pipeline theo thứ tự block, rồi kiểm tra trạng thái hoàn tất, Staging và audit log. Chỉ chạy riêng block extract sẽ không nạp dữ liệu vào SQL Server.
 
 ### 7. Chạy dbt sau khi nạp Staging
 
-Từ thư mục gốc dự án, dùng mật khẩu hiện có trong `.env`:
+dbt được đóng gói trong Docker nên chạy các lệnh dưới đây từ thư mục gốc project; không chạy `dbt` trực tiếp trong PowerShell của máy host:
 
 ```powershell
-docker compose build dbt
-docker compose up -d sqlserver
 docker compose run --rm --no-deps dbt debug
 docker compose run --rm --no-deps dbt build
 ```
 
-`dbt build` kiểm tra nguồn và tạo hai view trong `steam_games_DWH.dbt_staging`.
-Model chuẩn hóa trung gian là ephemeral, không tạo thêm bảng/view.
-Nếu staging rỗng, kiểm thử sẽ báo lỗi để tránh kết luận thành công khi chưa nạp dữ liệu.
+Lệnh đầu kiểm tra profile/kết nối; lệnh sau chạy model và tests. Nếu chỉ cần kiểm tra ba Dimension incremental vừa điều chỉnh (sau khi đã có staging models), có thể chạy:
+
+```powershell
+docker compose run --rm --no-deps dbt build --select dim_game dim_publisher dim_platform
+```
+
+Lệnh chọn riêng không chạy Fact; dùng `dbt build` không có `--select` để chạy toàn bộ luồng.
+
+Trong `dim_game` và `dim_publisher`, incremental chỉ lấy natural key mới và cấp surrogate key tiếp nối sau khóa lớn nhất. `dim_platform` dùng mapping khóa cố định cho tám tổ hợp và chỉ thêm các khóa còn thiếu để không xóa dòng đang được Fact tham chiếu. Trước khi chạy trên database hiện có, kiểm tra `platform_key` đang lưu có khớp mapping trong `dim_platform.sql` hay không.
+
+Lần build trước khi sửa ba Dimension đã ghi nhận `PASS=58, ERROR=3, SKIP=39`. Sau các thay đổi mã nguồn, cần chạy lại build và lưu log mới; chưa nên coi kết quả trước đó là bằng chứng build hiện tại thành công.
 
 Kiểm thử các trường hợp dữ liệu lỗi trong schema riêng, tự dọn sau khi chạy:
 
@@ -192,11 +210,19 @@ Kịch bản kiểm thử gợi ý:
 | Staging rỗng nhưng audit báo SUCCESS | Block `load_to_staging` chưa nối đúng thứ tự hoặc chưa chạy |
 | Block treo, ổ đĩa đầy | Docker/SQL Server cần dung lượng trống trên ổ chứa Docker |
 
-## Bảo mật
+## Bảo mật và dữ liệu
 
 - Không commit `.env`, `games.csv`, `mage_data/`.
+- Trước khi đổi repository sang Public, kiểm tra cả lịch sử commit để bảo đảm không còn mật khẩu, token hoặc dữ liệu không được phép công khai.
 - `io_config.yaml` chỉ tham chiếu mật khẩu qua `{{ env_var('MSSQL_PASSWORD') }}`.
 - Khuyến nghị tạo user riêng với quyền vừa đủ thay vì dùng `sa` cho pipeline.
+
+## Hạn chế đã biết
+
+- Dataset là CSV tĩnh, không có `updated_at`; Incremental dùng `Release date` để mô phỏng các batch hai năm và không phát hiện thay đổi trên game đã nạp.
+- Loader đọc toàn bộ CSV vào DataFrame trước khi cắt batch. Trên máy 8 GB RAM, Full Load có thể chưa hoàn tất; chỉ xác nhận thành công khi pipeline kết thúc và Staging/audit có kết quả tương ứng.
+- Các model `dim_game` và `dim_publisher` hiện bổ sung thành viên mới nhưng chưa cập nhật thuộc tính của natural key đã tồn tại.
+- Dashboard Power BI/Generative AI chưa được tính là phần hoàn thành trong repository hiện tại.
 
 ## Công nghệ
 
