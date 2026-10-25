@@ -50,21 +50,43 @@ publisher_with_dev as (
             order by game_id
         ) as rn
     from game_publisher
+),
+publisher_candidates as (
+    select
+        pwd.publisher_name,
+        pwd.developer_name,
+        case
+            when pc.game_count >= 10 then 'AAA'
+            else 'Indie'
+        end as publisher_tier
+    from publisher_with_dev pwd
+    join publisher_game_count pc
+        on pc.publisher_name = pwd.publisher_name
+    where pwd.rn = 1
+),
+max_key as (
+    {% if is_incremental() %}
+    select coalesce(max(publisher_key), 0) as max_key
+    from {{ this }}
+    {% else %}
+    select cast(0 as int) as max_key
+    {% endif %}
+),
+source_to_load as (
+    select p.*
+    from publisher_candidates p
+    {% if is_incremental() %}
+    where not exists (
+        select 1
+        from {{ this }} existing
+        where existing.publisher_name = p.publisher_name
+    )
+    {% endif %}
 )
 select
-    row_number() over (order by pwd.publisher_name) as publisher_key,
-    pwd.publisher_name,
-    pwd.developer_name,
-    case
-        when pc.game_count >= 10 then 'AAA'
-        else 'Indie'
-    end                                             as publisher_tier
-from publisher_with_dev pwd
-join publisher_game_count pc
-    on pc.publisher_name = pwd.publisher_name
-where pwd.rn = 1
-
-{% if is_incremental() %}
--- Chỉ thêm publisher chưa tồn tại trong bảng đích
-and pwd.publisher_name not in (select publisher_name from {{ this }})
-{% endif %}
+    cast(m.max_key + row_number() over (order by s.publisher_name) as int) as publisher_key,
+    s.publisher_name,
+    s.developer_name,
+    s.publisher_tier
+from source_to_load s
+cross join max_key m
