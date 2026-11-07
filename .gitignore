@@ -1,31 +1,55 @@
-# Bí mật
+# Environment & Secrets
 .env
-# Dữ liệu
-data/
-*.csv
+.env.*
+!.env.example
 
-# Mage
+# Large Data files
+data/*
+!data/.gitkeep
+*.csv
+!tests/fixtures/games_incremental_v1.csv
+!tests/fixtures/games_incremental_v2.csv
+!tests/fixtures/games_incremental_v3.csv
+*.parquet
+
+# Mage.ai runtime & cache
 .mage_data/
+mage_data/
 .logs/
 .variables/
-mage_data/
 mage_pipeline/.file_versions/
 mage_pipeline/.ssh_tunnel/
+mage_pipeline/*.db
+*.sqlite
 
-# Python
+# Python & testing artifacts
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 .ipynb_checkpoints/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
 
-# SQL Server volume (nếu map ra thư mục)
+# SQL Server volume (if mapped locally)
 sqlserver_data/
 
-# Hệ điều hành / IDE
+# OS & IDE
 .DS_Store
+Thumbs.db
 .vscode/
+.vs/
+*.swp
+*.swo
 
 # dbt generated artifacts
 dbt_transform/target/
 dbt_transform/logs/
 dbt_transform/dbt_packages/
 dbt_transform/.user.yml
+
+# Local test evidence and temporary files
+output/

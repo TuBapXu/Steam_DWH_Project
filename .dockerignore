@@ -4,7 +4,10 @@
 data
 mage_data
 mage_pipeline/.file_versions
+mage_pipeline/.ssh_tunnel
 dbt_transform/target
 dbt_transform/logs
 dbt_transform/dbt_packages
 **/__pycache__
+output
+.vs

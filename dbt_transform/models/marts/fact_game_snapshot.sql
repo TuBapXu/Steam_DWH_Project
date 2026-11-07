@@ -10,9 +10,23 @@
 -- Bảng Fact dạng Periodic Snapshot — trung tâm của Star Schema
 -- Grain: 1 dòng = 1 tựa game tại thời điểm nạp dữ liệu vào DWH
 -- Thứ tự load: 4 Dim phải có dữ liệu trước khi chạy model này (dbt tự sắp xếp qua ref())
+{% set apply_changes = env_var('STEAM_CHANGE_BATCH', '') and is_incremental() %}
 with
 cleaned as (
-    select * from {{ ref('stg_steam_games_cleaned') }}
+    select s.* from {{ ref('stg_steam_games_cleaned') }} s
+    {% if is_incremental() %}
+    left join {{ ref('dim_game') }} existing_game
+        on existing_game.appid_nk = s.game_id
+    left join {{ this }} existing_fact
+        on existing_fact.game_key = existing_game.game_key
+    where existing_fact.game_key is null
+       or coalesce(existing_fact.date_key, -1)
+          <> coalesce(convert(int, convert(char(8), s.release_date, 112)), 0)
+       or existing_fact.publisher_key is null
+    {% if apply_changes %}
+       or {{ steam_changed_game('s.game_id') }}
+    {% endif %}
+    {% endif %}
 ),
 dim_g as (
     select * from {{ ref('dim_game') }}
@@ -42,9 +56,10 @@ game_primary_publisher as (
 select
     -- ── Foreign Keys ──────────────────────────────────────────────────────
     dim_g.game_key,                             -- PK + FK → dwh.dim_game
-    dim_d.date_key,                             -- FK → dwh.dim_date (NULL nếu ngoài 2010-2024)
+    case when c.release_date is null then 0 else dim_d.date_key end as date_key,
     dim_p.platform_key,                         -- FK → dwh.dim_platform
-    dim_pub.publisher_key,                      -- FK → dwh.dim_publisher (NULL nếu trống)
+    case when nullif(gpp.primary_publisher, N'') is null then 0
+         else dim_pub.publisher_key end as publisher_key,
 
     -- ── Measures ──────────────────────────────────────────────────────────
     c.price,                                    -- Non-additive: giá bán lẻ (USD)
@@ -72,16 +87,8 @@ join dim_p
 left join game_primary_publisher gpp
     on gpp.game_id = c.game_id
 left join dim_pub
-    on dim_pub.publisher_name = gpp.primary_publisher
+    on dim_pub.publisher_name = gpp.primary_publisher and dim_pub.publisher_key <> 0
 
--- Dim_Date: LEFT JOIN — NULL nếu ngày phát hành ngoài 2010–2024
+-- Giữ game chưa có ngày phát hành.
 left join dim_d
-    on dim_d.date_key = try_convert(
-        int,
-        format(try_convert(date, c.release_date), 'yyyyMMdd')
-    )
-
-{% if is_incremental() %}
--- Chỉ xử lý game chưa có trong Fact (tránh duplicate khi chạy lại)
-where dim_g.game_key not in (select game_key from {{ this }})
-{% endif %}
+    on dim_d.full_date = c.release_date and dim_d.date_key <> 0

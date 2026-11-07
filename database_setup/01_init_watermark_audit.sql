@@ -66,9 +66,7 @@ GO
 -- 5. Tạo Staging table
 USE steam_games_DWH;
 
-IF OBJECT_ID('dbo.stg_steam_games', 'U') IS NOT NULL
-    DROP TABLE dbo.stg_steam_games;
-
+IF OBJECT_ID('dbo.stg_steam_games', 'U') IS NULL
 CREATE TABLE dbo.stg_steam_games (
     appid                       BIGINT          NOT NULL PRIMARY KEY,
     name                        NVARCHAR(1000)  NULL,

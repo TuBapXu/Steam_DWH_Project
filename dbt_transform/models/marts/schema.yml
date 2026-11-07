@@ -3,7 +3,7 @@ version: 2
 models:
   - name: dim_date
     description: >
-      Bảng chiều thời gian. Chứa toàn bộ ngày từ 2010-01-01 đến 2024-12-31,
+      Bảng chiều thời gian. Bao phủ lịch 2010–2024 và ngày phát hành trong nguồn,
       phục vụ phân tích xu hướng (trend) và mùa vụ (seasonality).
     columns:
       - name: date_key
@@ -28,11 +28,11 @@ models:
           - valid_range:
               arguments: {min_value: 1, max_value: 4}
       - name: year
-        description: "Năm dương lịch (2010–2024)."
+        description: "Năm dương lịch của full_date."
         data_tests:
           - not_null
           - valid_range:
-              arguments: {min_value: 2010, max_value: 2024}
+              arguments: {min_value: 1, max_value: 9999}
       - name: season
         description: "Mùa trong năm: Xuan (3-5), Ha (6-8), Thu (9-11), Dong (12,1,2)."
         data_tests:
@@ -142,7 +142,7 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              arguments: {values: ['AAA', 'Indie']}
+              arguments: {values: ['AAA', 'Indie', 'Unknown']}
 
   - name: fact_game_snapshot
     description: >
@@ -153,8 +153,9 @@ models:
       - name: date_key
         description: >
           FK → dim_date.date_key. Ngày phát hành dạng YYYYMMDD.
-          NULL nếu release_date nằm ngoài khoảng 2010–2024 hoặc không có ngày.
+          Khóa 0 khi game không có ngày phát hành.
         data_tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('dim_date')
@@ -162,6 +163,7 @@ models:
       - name: game_key
         description: "FK → dim_game.game_key. Không NULL (INNER JOIN với dim_game)."
         data_tests:
+          - unique
           - not_null
           - relationships:
               arguments:
@@ -176,8 +178,9 @@ models:
                 to: ref('dim_platform')
                 field: platform_key
       - name: publisher_key
-        description: "FK → dim_publisher.publisher_key. NULL nếu game không có thông tin publisher."
+        description: "FK → dim_publisher.publisher_key. Khóa 0 nếu game thiếu publisher."
         data_tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('dim_publisher')

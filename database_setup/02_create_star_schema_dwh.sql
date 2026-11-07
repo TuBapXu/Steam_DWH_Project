@@ -24,7 +24,7 @@ GO
 -- 2. DIMENSION TABLES
 -- =========================================================================
 
--- Dim 1: Dim_Date — Chiều thời gian (calendar 2010–2024)
+-- Dim 1: Dim_Date — Chiều thời gian mở rộng theo ngày phát hành
 IF OBJECT_ID('dwh.dim_date', 'U') IS NULL
 BEGIN
     CREATE TABLE dwh.dim_date (
@@ -32,7 +32,7 @@ BEGIN
         full_date   DATE          NOT NULL,   -- Business key
         month       TINYINT       NOT NULL,   -- 1–12
         quarter     TINYINT       NOT NULL,   -- 1–4
-        year        SMALLINT      NOT NULL,   -- 2010–2024
+        year        SMALLINT      NOT NULL,   -- Năm dương lịch
         season      NVARCHAR(20)  NOT NULL,   -- Xuan / Ha / Thu / Dong
         is_holiday  BIT           NOT NULL CONSTRAINT df_dim_date_holiday DEFAULT 0,
 
@@ -112,9 +112,9 @@ BEGIN
         game_key            INT             NOT NULL,
 
         -- Khóa ngoại tham chiếu Dimension
-        date_key            INT             NULL,     -- NULL nếu ngoài 2010–2024
+        date_key            INT             NOT NULL, -- 0 nếu chưa có ngày phát hành
         platform_key        INT             NOT NULL,
-        publisher_key       INT             NULL,     -- NULL nếu publisher trống
+        publisher_key       INT             NOT NULL, -- 0 nếu publisher trống
 
         -- Measures
         price               DECIMAL(10, 2)  NULL,    -- Non-additive
@@ -127,7 +127,8 @@ BEGIN
         average_playtime    INT             NULL,    -- Non-additive (phút)
 
         -- Constraints
-        CONSTRAINT pk_fact_game_snapshot  PRIMARY KEY (game_key),
+        CONSTRAINT pk_fact_game_snapshot  PRIMARY KEY (game_key, date_key, platform_key, publisher_key),
+        CONSTRAINT uq_fact_game_snapshot_game UNIQUE (game_key),
         CONSTRAINT fk_fact_game           FOREIGN KEY (game_key)       REFERENCES dwh.dim_game(game_key),
         CONSTRAINT fk_fact_date           FOREIGN KEY (date_key)       REFERENCES dwh.dim_date(date_key),
         CONSTRAINT fk_fact_platform       FOREIGN KEY (platform_key)   REFERENCES dwh.dim_platform(platform_key),

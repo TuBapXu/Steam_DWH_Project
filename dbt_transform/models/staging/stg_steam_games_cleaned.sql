@@ -1,5 +1,13 @@
+{% set change_batch = env_var('STEAM_CHANGE_BATCH', '') %}
+{% if change_batch %}
+    {{ config(materialized='incremental', unique_key='game_id', incremental_strategy='delete+insert') }}
+{% endif %}
+
 with standardized as (
-    select * from {{ ref('stg_steam_games_standardized') }}
+    select s.* from {{ ref('stg_steam_games_standardized') }} s
+    {% if change_batch and is_incremental() %}
+    where {{ steam_changed_game('s.appid') }}
+    {% endif %}
 ),
 cleaned as (
     select
