@@ -9,6 +9,9 @@ if 'callback' not in globals():
 
 @callback('failure')
 def callback_failure(*args, **kwargs):
+    if any(marker in str(kwargs.get('error','')) for marker in
+           ('[FULL_LOAD_AUDITED]', '[DWH_STEP_AUDITED]')):
+        return  # The responsible step already committed one FAILED audit entry.
     # Nội dung lỗi; nhân đôi dấu ' để không làm hỏng câu SQL
     err = str(kwargs.get('error', 'unknown error'))[:1000].replace("'", "''")
     run_mode = str(kwargs.get('run_mode', 'incremental')).strip().lower()

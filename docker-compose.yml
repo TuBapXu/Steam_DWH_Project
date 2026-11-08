@@ -1,8 +1,9 @@
 services:
   mage:
     build: .
+    command: ["/bin/sh", "-c", "python /home/src/database_setup/bootstrap.py && exec /app/run_app.sh"]
     ports:
-      - "6789:6789"
+      - "${STEAM_MAGE_PORT:-6790}:6789"
     volumes:
       - .:/home/src/
     environment:
@@ -12,7 +13,7 @@ services:
       - sqlserver
 
   sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mcr.microsoft.com/mssql/server:2022-latest@sha256:db9a8fe3098b7e8bbde41106bdc7caee942e97124e5fdb71b872ca208de3092d
     ports:
       - "1435:1433"
     environment:

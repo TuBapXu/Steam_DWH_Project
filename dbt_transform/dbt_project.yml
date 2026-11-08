@@ -19,6 +19,9 @@ models:
   steam_dwh:
     staging:
       +materialized: view
+      stg_steam_games_cleaned:
+        +materialized: table
+        +as_columnstore: false
     marts:
       +materialized: table
       +schema: dwh

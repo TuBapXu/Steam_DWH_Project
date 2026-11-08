@@ -4,7 +4,7 @@ models:
   - name: stg_steam_games_standardized
     description: "Model ephemeral: ép kiểu an toàn và chuẩn hóa văn bản của 42 cột nguồn; không tạo bảng/view."
   - name: stg_steam_games_cleaned
-    description: "Một dòng cho mỗi AppID dương; dữ liệu sạch phục vụ xây dựng DWH."
+    description: "Bảng dữ liệu sạch phục vụ xây dựng DWH, mỗi AppID dương có một dòng."
     columns:
       - name: game_id
         description: "AppID dương, duy nhất và không NULL."
@@ -93,20 +93,3 @@ models:
         data_tests: [normalized_text]
       - name: tags
         data_tests: [normalized_text]
-  - name: stg_steam_game_classifications
-    description: "Chuẩn hóa danh sách category/genre/tag thành các dòng, chuyển chữ thường và loại trùng."
-    columns:
-      - name: game_id
-        data_tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('stg_steam_games_cleaned')
-                field: game_id
-      - name: classification_type
-        data_tests:
-          - not_null
-          - accepted_values:
-              arguments: {values: [category, genre, tag]}
-      - name: classification_value
-        data_tests: [not_null, normalized_text]

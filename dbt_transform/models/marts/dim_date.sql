@@ -7,26 +7,35 @@
     )
 }}
 
--- Tạo date spine từ 2010-01-01 đến 2024-12-31
--- Dùng cross join numbers table thay vì recursive CTE để tránh giới hạn MAXRECURSION
--- incremental: lần đầu INSERT toàn bộ; lần sau chỉ INSERT ngày chưa có
+-- Giữ lịch gốc và mở rộng theo ngày phát hành của nguồn.
 with
+bounds as (
+    select
+        case when min(release_date) < cast('20100101' as date)
+             then min(release_date) else cast('20100101' as date) end as start_date,
+        case when max(release_date) > cast('20241231' as date)
+             then max(release_date) else cast('20241231' as date) end as end_date
+    from {{ source('staging_source', 'stg_steam_games') }}
+    where appid > 0
+),
 l0 as (select 1 as c union all select 1),
 l1 as (select 1 as c from l0 a cross join l0 b),
 l2 as (select 1 as c from l1 a cross join l1 b),
 l3 as (select 1 as c from l2 a cross join l2 b),
 l4 as (select 1 as c from l3 a cross join l3 b),  -- 65,536 rows
 nums as (
-    select row_number() over (order by (select null)) - 1 as n
-    from l4
+    -- 4,194,304 offsets cover the full SQL Server DATE range.
+    select top ((select datediff(day, start_date, end_date) + 1 from bounds))
+        row_number() over (order by (select null)) - 1 as n
+    from l4 cross join l2 cross join l1
+    order by n
 ),
 dates as (
-    select dateadd(day, n, cast('2010-01-01' as date)) as full_date
-    from nums
-    where dateadd(day, n, cast('2010-01-01' as date)) <= cast('2024-12-31' as date)
+    select dateadd(day, n, start_date) as full_date
+    from nums cross join bounds
 )
 select
-    convert(int, format(full_date, 'yyyyMMdd'))    as date_key,
+    convert(int, convert(char(8), full_date, 112))  as date_key,
     full_date,
     month(full_date)                               as month,
     datepart(quarter, full_date)                   as quarter,
@@ -42,6 +51,12 @@ from dates
 
 {% if is_incremental() %}
 -- Chỉ thêm ngày chưa tồn tại trong bảng đích
-where convert(int, format(full_date, 'yyyyMMdd'))
+where convert(int, convert(char(8), full_date, 112))
       not in (select date_key from {{ this }})
+{% endif %}
+
+union all
+select 0, cast('00010101' as date), 1, 1, 1, N'Unknown', cast(0 as bit)
+{% if is_incremental() %}
+where not exists (select 1 from {{ this }} where date_key = 0)
 {% endif %}

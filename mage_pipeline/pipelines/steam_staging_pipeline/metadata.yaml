@@ -1,77 +1,103 @@
 blocks:
-- all_upstream_blocks_executed: true
-  color: null
-  configuration:
-    disable_output_preview: true
-  downstream_blocks:
-  - validate_clean
-  executor_config: null
-  executor_type: local_python
-  has_callback: false
-  language: python
-  name: extract_steam_games
-  retry_config: {}
-  status: executed
-  timeout: null
+- uuid: prepare_steam_chunks
+  name: prepare_steam_chunks
   type: data_loader
+  language: python
+  configuration:
+    dynamic: true
   upstream_blocks: []
-  uuid: extract_steam_games
-- all_upstream_blocks_executed: true
-  color: null
-  configuration:
-    disable_output_preview: true
   downstream_blocks:
-  - load_to_staging
-  executor_config: null
-  executor_type: local_python
-  has_callback: false
+  - extract_steam_chunk
+  status: not_executed
+- uuid: extract_steam_chunk
+  name: extract_steam_chunk
+  type: data_loader
   language: python
-  name: validate clean
-  retry_config: {}
-  status: executed
-  timeout: null
-  type: transformer
+  configuration: {}
   upstream_blocks:
-  - extract_steam_games
-  uuid: validate_clean
-- all_upstream_blocks_executed: true
+  - prepare_steam_chunks
+  downstream_blocks:
+  - validate_steam_chunk
+  status: not_executed
+- uuid: validate_steam_chunk
+  name: validate_steam_chunk
+  type: transformer
+  language: python
+  configuration: {}
+  upstream_blocks:
+  - extract_steam_chunk
+  downstream_blocks:
+  - load_steam_chunk
+  status: not_executed
+- uuid: load_steam_chunk
+  name: load_steam_chunk
+  type: data_exporter
+  language: python
+  configuration:
+    reduce_output: true
+  upstream_blocks:
+  - validate_steam_chunk
+  downstream_blocks:
+  - publish_steam_staging
+  status: not_executed
+- uuid: publish_steam_staging
+  name: publish_steam_staging
+  type: data_exporter
+  language: python
+  configuration: {}
+  upstream_blocks:
+  - load_steam_chunk
+  downstream_blocks:
+  - report_steam_load
+  status: not_executed
+- uuid: report_steam_load
+  name: report_steam_load
+  type: data_exporter
+  language: python
+  configuration: {}
+  upstream_blocks:
+  - publish_steam_staging
+  downstream_blocks:
+  - run_dbt_transform
+  status: not_executed
+- all_upstream_blocks_executed: false
   color: null
   configuration:
-    disable_output_preview: true
+    disable_output_preview: false
   downstream_blocks:
-  - update_watermark_audit
+  - check_dwh_results
   executor_config: null
   executor_type: local_python
   has_callback: false
   language: python
-  name: load_to_staging
+  name: run_dbt_transform
   retry_config: {}
-  status: executed
+  status: not_executed
   timeout: null
   type: data_exporter
   upstream_blocks:
-  - validate_clean
-  uuid: load_to_staging
-- all_upstream_blocks_executed: true
+  - report_steam_load
+  uuid: run_dbt_transform
+- all_upstream_blocks_executed: false
   color: null
   configuration:
-    disable_output_preview: true
+    disable_output_preview: false
   downstream_blocks: []
   executor_config: null
   executor_type: local_python
   has_callback: false
   language: python
-  name: update_watermark_audit
+  name: check_dwh_results
   retry_config: {}
-  status: executed
+  status: not_executed
   timeout: null
   type: data_exporter
   upstream_blocks:
-  - load_to_staging
-  uuid: update_watermark_audit
+  - run_dbt_transform
+  uuid: check_dwh_results
 cache_block_output_in_memory: false
 callbacks:
-- all_upstream_blocks_executed: true
+- all_upstream_blocks_executed: false
   color: null
   configuration: {}
   downstream_blocks: []
@@ -85,16 +111,16 @@ callbacks:
   timeout: null
   type: callback
   upstream_blocks:
-  - extract_steam_games
-  - validate_clean
-  - load_to_staging
-  - update_watermark_audit
+  - report_steam_load
+  - run_dbt_transform
+  - check_dwh_results
   uuid: log_failure
-concurrency_config: {}
+concurrency_config:
+  block_run_limit: 4
 conditionals: []
 created_at: '2026-10-17 14:09:28.092606+00:00'
 data_integration: null
-description: ingest and load data form csv file to sel server staging
+description: 'Dynamic chunks: extract, validate, load, publish, audit, dbt and reconcile'
 executor_config: {}
 executor_count: 1
 executor_type: null
@@ -111,8 +137,12 @@ tags: []
 type: python
 uuid: steam_staging_pipeline
 variables:
-  demo_cet: '2013-01-01'
-  demo_lset: '2012-01-01'
-  run_mode: incremental
+  chunk_size: 1000
+  dbt_timeout_seconds: 3600
+  demo_cet: null
+  demo_lset: null
+  max_workers: 2
+  run_mode: full
+  source_file: data/games.csv
 variables_dir: /home/src/mage_data/mage_pipeline
 widgets: []

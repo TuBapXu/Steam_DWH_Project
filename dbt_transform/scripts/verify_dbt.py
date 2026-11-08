@@ -74,7 +74,7 @@ def main():
         # SELECT INTO copies column types without copying the real PK, so dirty IDs can be tested.
         conn.execute('SELECT TOP (0) * INTO ' + source + ' FROM ' + real_source)
         fixtures = [
-            # Paid game: Unicode name, trim/control characters, duplicate classifications.
+            # Paid game with a Unicode name and text that needs trimming.
             dict(appid=910001, name='\t Trò chơi Việt \n', price=25, discount=10,
                  positive=3, negative=1, release_date='2020-02-29', windows=1, mac=0,
                  developers='  Studio Việt  ', genres=' Action,action, RPG, ,None ',
@@ -111,8 +111,8 @@ def main():
         # Source not_null intentionally fails on this dirty fixture. Run the models first;
         # evaluate every model/consistency test separately after confirming filtering.
         run_dbt(env, 'run')
-        view = identifier(target_schema) + '.[stg_steam_games_cleaned]'
-        cursor = conn.execute('SELECT * FROM ' + view)
+        cleaned_table = identifier(target_schema) + '.[stg_steam_games_cleaned]'
+        cursor = conn.execute('SELECT * FROM ' + cleaned_table)
         columns = [c[0] for c in cursor.description]
         rows = {r[0]: dict(zip(columns, r)) for r in cursor.fetchall()}
         check(set(rows) == set(range(910001, 910007)), 'Invalid keys were not filtered correctly')
@@ -138,12 +138,6 @@ def main():
         check(e['positive_review_ratio'] == Decimal('0.5'), 'Review sum overflow')
         check(e['discount_percentage'] == 100 and e['metacritic_score'] == 100, 'Upper boundaries')
         check(f['positive_review_ratio'] == 1 and f['negative_reviews'] == 0, 'NULL denominator operand')
-        classification = identifier(target_schema) + '.[stg_steam_game_classifications]'
-        actual = set(tuple(r) for r in conn.execute('SELECT * FROM ' + classification))
-        expected = {(910001, 'genre', 'action'), (910001, 'genre', 'rpg'),
-                    (910001, 'category', 'single-player'), (910001, 'tag', 'indie'),
-                    (910006, 'genre', 'rpg'), (910006, 'genre', 'strategy')}
-        check(actual == expected, 'Classification splitting, blanks, placeholders or duplicates')
         # Remove only the deliberately invalid NULL key, then all source tests must pass too.
         conn.execute('DELETE FROM ' + source + ' WHERE appid IS NULL')
         run_dbt(env, 'test')
@@ -162,7 +156,7 @@ def main():
             conn.execute('DROP SCHEMA ' + identifier(schema))
         conn.close()
         temp.cleanup()
-    print('REGRESSION PASS: 9 dirty fixtures; 6 retained games; 6 classification rows; '
+    print('REGRESSION PASS: 9 dirty fixtures; 6 retained games; '
           + str(len(result['results'])) + ' dbt data tests passed; temporary schemas removed.', flush=True)
 
 

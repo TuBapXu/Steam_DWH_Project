@@ -79,7 +79,7 @@ source_to_load as (
     where not exists (
         select 1
         from {{ this }} existing
-        where existing.publisher_name = p.publisher_name
+        where existing.publisher_name = p.publisher_name and existing.publisher_key <> 0
     )
     {% endif %}
 )
@@ -90,3 +90,9 @@ select
     s.publisher_tier
 from source_to_load s
 cross join max_key m
+
+union all
+select 0, N'Unknown Publisher', null, N'Unknown'
+{% if is_incremental() %}
+where not exists (select 1 from {{ this }} where publisher_key = 0)
+{% endif %}
