@@ -1,6 +1,7 @@
-from os import path
-from mage_ai.io.config import ConfigFileLoader
-from mage_ai.io.mssql import MSSQL
+from pathlib import Path
+import os
+import sys
+
 from mage_ai.settings.repo import get_repo_path
 
 if 'callback' not in globals():
@@ -9,20 +10,25 @@ if 'callback' not in globals():
 
 @callback('failure')
 def callback_failure(*args, **kwargs):
-    if any(marker in str(kwargs.get('error','')) for marker in
-           ('[FULL_LOAD_AUDITED]', '[DWH_STEP_AUDITED]')):
+    # Mage passes the block exception as `__error` (global variables arrive as the other kwargs).
+    error = kwargs.get('__error') or kwargs.get('error') or 'unknown error'
+    if any(marker in str(error) for marker in ('[FULL_LOAD_AUDITED]', '[DWH_STEP_AUDITED]')):
         return  # The responsible step already committed one FAILED audit entry.
-    # Nội dung lỗi; nhân đôi dấu ' để không làm hỏng câu SQL
-    err = str(kwargs.get('error', 'unknown error'))[:1000].replace("'", "''")
-    run_mode = str(kwargs.get('run_mode', 'incremental')).strip().lower()
+    repo = Path(os.environ.get('USER_CODE_PATH', get_repo_path())).resolve()
+    root = repo if (repo / 'pipeline_support').is_dir() else repo.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from pipeline_support.audit import write_audit
+    from pipeline_support.mage_dwh import mage_context
 
-    config = ConfigFileLoader(
-        path.join(get_repo_path(), 'io_config.yaml'), 'default'
-    )
-    with MSSQL.with_config(config) as db:
-        db.execute(
-            "INSERT INTO dbo.etl_audit_log "
-            "(pipeline_name, run_date, status, records_processed, error_message) "
-            f"VALUES ('steam_staging_{run_mode}', GETDATE(), 'FAILED', 0, N'{err}')"
-        )
-        db.commit()
+    run_mode = str(kwargs.get('run_mode', 'incremental')).strip().lower()
+    _, connect, _ = mage_context()
+    connection = connect()
+    try:
+        # Parameterised insert; the run_id is unknown here, so the row is matched by time/trigger.
+        write_audit(connection, pipeline_name=f'steam_staging_{run_mode}', step='pipeline',
+                    status='FAILED', records_processed=0,
+                    error=str(error)[:4000],
+                    run_mode=run_mode, trigger_name=kwargs.get('trigger_name'))
+    finally:
+        connection.close()

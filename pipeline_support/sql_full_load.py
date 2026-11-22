@@ -1,8 +1,8 @@
 """SQL Server work table and bounded pyodbc array inserts; legacy schema intact."""
-from datetime import datetime
 import json
 import re
 
+from .audit import staging_metrics, write_audit
 from .full_load import SQL_COLUMNS
 
 
@@ -22,6 +22,8 @@ class SqlFullLoadStore:
         self.run_mode=run_mode
         self.main=None
         self.created=False
+        # Run identity and whole-file totals for the audit row (set by dynamic_chunks.finalize).
+        self.audit_context={}
 
     def __enter__(self):
         self.main=self.connect()
@@ -102,9 +104,10 @@ class SqlFullLoadStore:
             actual=self.main.execute('SELECT COUNT_BIG(*) FROM dbo.stg_steam_games').fetchone()[0]
             if actual!=expected or actual==0:
                 raise RuntimeError('Staging row count does not match the complete full load')
-            self.main.execute('INSERT INTO dbo.etl_audit_log '
-                '(pipeline_name,run_date,status,records_processed,error_message) VALUES (?,?,?,?,?)',
-                'steam_staging_full',datetime.now(),'SUCCESS',actual,None)
+            totals=dict(self.audit_context.get('totals') or {},run_mode='full',records_processed=actual)
+            write_audit(self.main,pipeline_name='steam_staging_full',step='staging',status='SUCCESS',
+                        records_processed=actual,commit=False,**self.audit_identity('full'),
+                        **staging_metrics(totals))
             self.main.commit()
         except BaseException:
             self.main.rollback()
@@ -179,19 +182,24 @@ class SqlFullLoadStore:
             INSERT dbo.etl_steam_incremental_batch (batch_id, batch_seq, source_hash, result_json)
             VALUES (?, ?, ?, ?)
         ''', self.run_id, cet, plan['source_hash'], json.dumps(result))
-        self.main.execute('''
-            INSERT dbo.etl_audit_log (pipeline_name,run_date,status,records_processed,error_message)
-            VALUES ('steam_staging_incremental',GETDATE(),'SUCCESS',?,NULL)
-        ''', result['records_processed'])
+        write_audit(self.main, pipeline_name='steam_staging_incremental', step='staging',
+                    status='SUCCESS', records_processed=result['records_processed'], commit=False,
+                    **self.audit_identity('incremental'), **staging_metrics(result))
         self.main.commit()
         return result
+
+    def audit_identity(self,run_mode):
+        context=self.audit_context
+        return dict(run_id=context.get('run_id',self.run_id),run_mode=run_mode,
+                    trigger_name=context.get('trigger_name'),started_at=context.get('started_at'))
 
     def record_failure(self,message):
         try:
             self.main.rollback()
-            self.main.execute('INSERT INTO dbo.etl_audit_log '
-                '(pipeline_name,run_date,status,records_processed,error_message) VALUES (?,?,?,?,?)',
-                f'steam_staging_{self.run_mode}',datetime.now(),'FAILED',0,f'run_id={self.run_id}: {message}')
+            write_audit(self.main,pipeline_name=f'steam_staging_{self.run_mode}',step='staging',
+                        status='FAILED',records_processed=0,error=message,commit=False,
+                        **self.audit_identity(self.run_mode),
+                        metrics=dict(self.audit_context.get('totals') or {}) or None)
             self.main.commit()
             return True
         except Exception:

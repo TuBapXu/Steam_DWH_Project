@@ -69,6 +69,38 @@ def assert_watermark(conn, label, lset, cet):
     print(f'WATERMARK DEMO {label}: LSET={lset}, CET={cet}', flush=True)
 
 
+AUDIT_FIELDS = ('log_id', 'pipeline_name', 'status', 'step', 'run_id', 'trigger_name', 'run_mode',
+                'started_at', 'finished_at', 'duration_sec', 'records_processed', 'inserted',
+                'updated', 'unchanged', 'rejected', 'dbt_tests', 'checks_failed', 'metrics_json',
+                'error_message')
+
+
+def audit_mark(conn):
+    return conn.execute('SELECT COALESCE(MAX(log_id), 0) FROM dbo.etl_audit_log').fetchone()[0]
+
+
+def audit_rows(conn, label, mark, expected):
+    """Rows written by one run: expected (step, status) order, one run_id, timing and trigger."""
+    rows = [dict(zip(AUDIT_FIELDS, row)) for row in conn.execute(
+        'SELECT ' + ','.join(AUDIT_FIELDS) + ' FROM dbo.etl_audit_log WHERE log_id > ? ORDER BY log_id',
+        mark).fetchall()]
+    steps = [(row['step'], row['status']) for row in rows]
+    assert steps == expected, (label, steps)
+    run_ids = {row['run_id'] for row in rows}
+    assert len(run_ids) == 1, (label, run_ids)
+    for row in rows:
+        assert row['trigger_name'] == 'verify_' + label, (label, row)
+        assert row['run_mode'] in ('full', 'incremental'), (label, row)
+        assert row['started_at'] is not None and row['finished_at'] >= row['started_at'], (label, row)
+        assert row['duration_sec'] is not None and row['duration_sec'] >= 0, (label, row)
+        assert (row['error_message'] is not None) == (row['status'] == 'FAILED'), (label, row)
+        if row['metrics_json'] is not None:
+            json.loads(row['metrics_json'])
+    summary = ', '.join(f'{step}={status}' for step, status in steps)
+    print(f'AUDIT PASS {label}: {summary} run_id={next(iter(run_ids))}', flush=True)
+    return {row['step']: row for row in rows}
+
+
 def verify(conn, database, token):
     repo = str(ROOT / 'mage_pipeline')
     pipeline = Pipeline.get('steam_staging_pipeline', repo_path=repo)
@@ -79,6 +111,7 @@ def verify(conn, database, token):
 
     def execute(label, version, mode, source_file=None):
         variables = dict(run_mode=mode, chunk_size=1, max_workers=2, dbt_timeout_seconds=300,
+                         trigger_name='verify_' + label,
                          source_file=source_file or f'tests/fixtures/games_incremental_{version}.csv',
                          execution_partition=f'{token}-{label}')
         run = PipelineRun.create(pipeline_uuid=pipeline.uuid, variables=variables, status='running')
@@ -97,9 +130,33 @@ def verify(conn, database, token):
             run.update(status='failed')
             raise
 
+    ok = [('staging', 'SUCCESS'), ('dbt', 'SUCCESS'), ('check', 'SUCCESS')]
     with patch.object(ConfigFileLoader, '__getitem__', test_config):
+        # S4: staging failure (missing source file) leaves exactly one FAILED staging row.
+        mark = audit_mark(conn)
+        try:
+            execute('missing-source', 'v1', 'full', 'tests/fixtures/does_not_exist.csv')
+        except Exception:
+            pass
+        else:
+            raise AssertionError('Expected a missing source_file to fail the run')
+        failed = audit_rows(conn, 'missing-source', mark, [('staging', 'FAILED')])
+        assert 'does_not_exist' in failed['staging']['error_message'], failed
+
+        # S1: full load writes staging/dbt/check rows sharing one run_id.
+        mark = audit_mark(conn)
         execute('full-v1', 'v1', 'full')
+        full = audit_rows(conn, 'full-v1', mark, ok)
+        assert full['staging']['run_mode'] == 'full', full['staging']
+        assert full['staging']['pipeline_name'] == 'steam_staging_full', full['staging']
+        counts = tuple(full['staging'][key] for key in ('inserted', 'updated', 'unchanged'))
+        assert counts == (2, 0, 0), full['staging']
+        assert full['dbt']['dbt_tests'] > 0 and full['check']['checks_failed'] == 0, full
+        assert json.loads(full['check']['metrics_json'])['checks_total'] > 0, full['check']
+        mark = audit_mark(conn)
         execute('v1', 'v1', 'incremental')
+        first = audit_rows(conn, 'v1', mark, ok)
+        assert first['staging']['unchanged'] == 2 and first['staging']['inserted'] == 0, first['staging']
         baseline = facts(conn)
         times = cleaned_load_times(conn)
         assert set(baseline) == {910101, 910102} and baseline[910101][1] == 10, baseline
@@ -114,19 +171,32 @@ def verify(conn, database, token):
             ALTER TABLE dwh.fact_game_snapshot ADD CONSTRAINT ck_watermark_demo_fact
             CHECK (game_key <> {game_key} OR positive_reviews <= 10)
         ''')
+        mark = audit_mark(conn)
         try:
             execute('v2-failed', 'v2', 'incremental')
         except RuntimeError as error:
             assert 'ck_watermark_demo_fact' in str(error), error
         else:
             raise AssertionError('Expected the V2 dbt transform to fail')
+        # S5: dbt failure -> FAILED dbt row, no duplicate callback row, check never runs.
+        failed = audit_rows(conn, 'v2-failed', mark, [('staging', 'SUCCESS'), ('dbt', 'FAILED')])
+        assert 'ck_watermark_demo_fact' in failed['dbt']['error_message']
         [_, (pending, completion)] = batches(conn)
         assert completion is None and facts(conn) == baseline
         assert (pending['lset'], pending['cet']) == (1, 2), pending
         assert_watermark(conn, 'V2 dbt failed', 1, 2)
 
         conn.execute('ALTER TABLE dwh.fact_game_snapshot DROP CONSTRAINT ck_watermark_demo_fact')
+        mark = audit_mark(conn)
         execute('v2-resume', 'v2', 'incremental')
+        # S2: the retry is a new run (own run_id) that re-delivers the same pending batch.
+        resumed = audit_rows(conn, 'v2-resume', mark, ok)
+        assert resumed['staging']['run_id'] != failed['staging']['run_id']
+        for attempt in (failed, resumed):
+            counts = tuple(attempt['staging'][key] for key in ('inserted', 'updated', 'unchanged'))
+            assert counts == (1, 1, 1), attempt['staging']
+            assert json.loads(attempt['staging']['metrics_json'])['batch_id'] == pending['batch_id']
+        assert json.loads(resumed['staging']['metrics_json'])['resumed'] is True
         [_, (done, completion)] = batches(conn)
         actual = facts(conn)
         updated_times = cleaned_load_times(conn)
@@ -145,8 +215,16 @@ def verify(conn, database, token):
         assert_watermark(conn, 'V2 replay complete', 3, 3)
         staged = [tuple(row) for row in conn.execute('SELECT * FROM dbo.stg_steam_games ORDER BY appid')]
         previous_batches = batches(conn)
+        mark = audit_mark(conn)
         with patch('pipeline_support.mage_dwh.build_dbt', side_effect=AssertionError('V3 must skip dbt')):
             execute('v3', 'v3', 'incremental')
+        # S3: every record rejected -> staging rejected count, dbt skipped (0 tests), check passes.
+        skipped = audit_rows(conn, 'v3', mark, ok)
+        assert skipped['staging']['rejected'] > 0, skipped['staging']
+        assert skipped['staging']['records_processed'] == 0, skipped['staging']
+        assert json.loads(skipped['staging']['metrics_json'])['outcome'] == 'NO_VALID_RECORDS'
+        assert skipped['dbt']['dbt_tests'] == 0
+        assert json.loads(skipped['dbt']['metrics_json'])['dbt'] == 'SKIPPED'
         assert [tuple(row) for row in conn.execute('SELECT * FROM dbo.stg_steam_games ORDER BY appid')] == staged
         assert batches(conn) == previous_batches
         assert facts(conn) == actual and cleaned_load_times(conn) == updated_times
