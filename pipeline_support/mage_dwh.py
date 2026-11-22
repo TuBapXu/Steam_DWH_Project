@@ -179,6 +179,11 @@ def check_results(transform_result, *, connect, progress=print):
                      "source records rejected. DWH reconciliation passed; LSET/CET unchanged.")
         else:
             progress('PIPELINE SUCCESS: staging, dbt models/tests and DWH reconciliation passed.')
+        try:
+            from .ai_explainer import run_all_ai_modules
+            run_all_ai_modules()
+        except Exception as _ai_err:
+            progress(f'AI Explainer note: {_ai_err}')
         return report
     except Exception as exc:
         prefix = failure(connection, 'steam_dwh_check', exc, progress, step='check',

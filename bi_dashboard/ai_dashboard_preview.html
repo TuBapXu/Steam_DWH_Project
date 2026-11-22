@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mô Phỏng Trang 5: AI Insights & Giám Sát Thông Minh</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #f0f2f5; color: #171a21; padding: 20px; }
+        .dashboard-container { max-width: 1400px; margin: 0 auto; background: #ffffff; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; }
+        
+        /* Header */
+        .header-banner { background: #171a21; color: #ffffff; padding: 18px 25px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #66c0f4; }
+        .header-title { font-size: 20px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+        .header-subtitle { font-size: 13px; color: #c6d4df; margin-top: 4px; }
+        .badge-ai { background: #66c0f4; color: #171a21; padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
+
+        /* KPI Strip */
+        .kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; padding: 20px; background: #eef2f7; border-bottom: 1px solid #dcdfe6; }
+        .kpi-card { background: #ffffff; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0; text-align: center; }
+        .kpi-label { font-size: 12px; color: #605e5c; text-transform: uppercase; font-weight: 600; margin-bottom: 5px; }
+        .kpi-value { font-size: 24px; font-weight: bold; color: #1b2838; }
+        .kpi-status-success { color: #2ecc71; }
+
+        /* Main Workspace: 2 Panels */
+        .workspace { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; }
+        .panel { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 18px; display: flex; flex-direction: column; gap: 15px; }
+        .panel-header { font-size: 16px; font-weight: bold; color: #0e1b2b; padding-bottom: 10px; border-bottom: 2px solid #eef2f7; display: flex; align-items: center; gap: 8px; }
+
+        /* Log Table */
+        .log-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .log-table th, .log-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #edf2f7; }
+        .log-table th { background: #f8fafc; color: #4a5568; font-weight: 600; }
+        .log-table tr:hover { background: #f1f5f9; cursor: pointer; }
+        .log-table tr.selected { background: #e0f2fe; font-weight: 600; }
+        .badge-status { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .status-ok { background: #dcfce7; color: #166534; }
+        .status-fail { background: #fee2e2; color: #991b1b; }
+
+        /* AI Output Box */
+        .ai-box { background: #f8fafc; border: 1px solid #cbd5e1; border-left: 4px solid #66c0f4; border-radius: 4px; padding: 14px; font-size: 13px; line-height: 1.6; color: #1e293b; white-space: pre-line; }
+        .ai-box-title { font-weight: bold; color: #0369a1; margin-bottom: 6px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+
+        /* Slicer Buttons */
+        .slicer-container { display: flex; gap: 8px; flex-wrap: wrap; }
+        .slicer-btn { background: #ffffff; border: 1px solid #cbd5e1; padding: 6px 12px; font-size: 12px; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.2s; }
+        .slicer-btn:hover { background: #f1f5f9; }
+        .slicer-btn.active { background: #171a21; color: #ffffff; border-color: #171a21; }
+
+        .footer-note { padding: 12px 20px; font-size: 12px; color: #64748b; background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: right; }
+    </style>
+</head>
+<body>
+
+<div class="dashboard-container">
+    <!-- Header -->
+    <div class="header-banner">
+        <div>
+            <div class="header-title">Trang 5: AI Insights & Giám Sát Thông Minh (Copilot Analytics)</div>
+            <div class="header-subtitle">Hệ thống phân tích tự động 2 cấp độ: Giám sát kỹ thuật ETL và Khám phá giá trị nghiệp vụ Dashboard</div>
+        </div>
+        <div class="badge-ai">🤖 AI ENGINE READY</div>
+    </div>
+
+    <!-- KPI Strip -->
+    <div class="kpi-strip">
+        <div class="kpi-card">
+            <div class="kpi-label">Tổng đợt chạy ETL</div>
+            <div class="kpi-value">5 Lần</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Tỷ lệ nạp thành công</div>
+            <div class="kpi-value kpi-status-success">80.0%</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Kiểm thử dbt Data Quality</div>
+            <div class="kpi-value" style="color: #0284c7;">91 / 91 Passed</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Trạng thái đợt gần nhất</div>
+            <div class="kpi-value" style="color: #dc2626;">Cảnh báo sự cố</div>
+        </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="workspace">
+        <!-- Panel Trái: Kỹ thuật ETL -->
+        <div class="panel">
+            <div class="panel-header">
+                <span>⚙️</span> Giám Sát Kỹ Thuật Pipeline (Chọn đợt chạy để xem AI nhận định)
+            </div>
+            
+            <table class="log-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Tên Pipeline</th>
+                        <th>Trạng thái</th>
+                        <th>Bản ghi</th>
+                        <th>Thời lượng</th>
+                    </tr>
+                </thead>
+                <tbody id="etlTableBody">
+                    <tr onclick="selectEtl(4, this)" class="selected">
+                        <td>#4</td>
+                        <td>Load_Staging_To_DWH</td>
+                        <td><span class="badge-status status-ok">Thành công</span></td>
+                        <td>122,194</td>
+                        <td>0s</td>
+                    </tr>
+                    <tr onclick="selectEtl(5, this)">
+                        <td>#5</td>
+                        <td>Incremental_Load_Staging</td>
+                        <td><span class="badge-status status-fail">Thất bại</span></td>
+                        <td>0</td>
+                        <td>45s</td>
+                    </tr>
+                    <tr onclick="selectEtl(3, this)">
+                        <td>#3</td>
+                        <td>Incremental_Load_Staging</td>
+                        <td><span class="badge-status status-ok">Thành công</span></td>
+                        <td>2</td>
+                        <td>3s</td>
+                    </tr>
+                    <tr onclick="selectEtl(2, this)">
+                        <td>#2</td>
+                        <td>Load_Staging_To_DWH</td>
+                        <td><span class="badge-status status-ok">Thành công</span></td>
+                        <td>122,191</td>
+                        <td>0s</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="ai-box">
+                <div class="ai-box-title">🧠 Nhận định & Chẩn đoán từ AI (Data Quality & Operational Observability):</div>
+                <div id="aiEtlContent">✅ [TỔNG QUAN VẬN HÀNH]: Đợt chạy pipeline 'Load_Staging_To_DWH' hoàn tất ở trạng thái THÀNH CÔNG (SUCCESS), xử lý an toàn 122,194 bản ghi.
+🔍 [CHẤT LƯỢNG DỮ LIỆU]: Toàn bộ 91/91 bài kiểm thử dbt Data Quality đạt tỷ lệ vượt qua 100% (bao gồm ràng buộc unique, not_null, khóa ngoại dwh.fact_game và đối soát 3 tầng Staging – Cleaned – Fact).
+💡 [KHUYẾN NGHỊ VẬN HÀNH]: Pipeline đạt chuẩn SLA ổn định, dữ liệu sẵn sàng cho chu kỳ làm mới (Data Refresh) trên Semantic Model Power BI mà không phát sinh rủi ro phân kỳ số liệu.</div>
+            </div>
+        </div>
+
+        <!-- Panel Phải: Nghiệp vụ Dashboard -->
+        <div class="panel">
+            <div class="panel-header">
+                <span>📈</span> Phân Tích Giá Trị Nghiệp Vụ (Chọn Dashboard để xem AI đúc kết)
+            </div>
+
+            <!-- Slicer Buttons -->
+            <div class="slicer-container">
+                <button class="slicer-btn active" onclick="selectPage('01', this)">Trang 1: Tổng quan & Mùa vụ</button>
+                <button class="slicer-btn" onclick="selectPage('02', this)">Trang 2: Chiến lược giá</button>
+                <button class="slicer-btn" onclick="selectPage('03', this)">Trang 3: Publisher & Nền tảng</button>
+                <button class="slicer-btn" onclick="selectPage('04', this)">Trang 4: Chi tiết game & Pareto</button>
+            </div>
+
+            <!-- AI Business Summary -->
+            <div class="ai-box" style="border-left-color: #8b5cf6;">
+                <div class="ai-box-title" style="color: #6d28d9;">📊 Tóm Tắt Điều Hành (Executive Summary - AI Storyteller):</div>
+                <div id="aiBizSummary">📊 [QUY MÔ & TĂNG TRƯỞNG]: Toàn hệ thống ghi nhận 122,193 tựa game chuẩn hóa. Tốc độ ra mắt tăng trưởng mạnh theo hàm mũ, đặt thị trường Steam vào trạng thái 'quá tải chú ý' (Attention Economy Deficit).
+🍁 [ĐIỂM RƠI MÙA VỤ]: Dữ liệu bộc lộ rõ hiện tượng dồn mùa quý 4: Mùa Thu dẫn đầu tuyệt đối với 34,248 game (đỉnh điểm là Tháng 10 với 11,870 game), trong khi Mùa Đông chỉ có 27,502 game (Tháng 6 chạm đáy với 9,092 game, thấp hơn đỉnh 23.4%).
+💡 [KHUYẾN NGHỊ CHIẾN LƯỢC]: Tránh dồn lịch ra mắt vào Tháng 10–11 nơi các bom tấn chiếm trọn banner trang chủ. Nên tận dụng 'khoảng lặng cạnh tranh' vào Tháng 1–2 hoặc Tháng 4–5 để tối ưu tỷ lệ hiển thị tự nhiên.</div>
+            </div>
+
+            <!-- AI Actionable Recommendations -->
+            <div class="ai-box" style="border-left-color: #10b981;">
+                <div class="ai-box-title" style="color: #047857;">🎯 Khuyến Nghị Hành Động Chiến Lược (Actionable Insights):</div>
+                <div id="aiBizRecs">1. Tận dụng tháng 1 và tháng 4 làm khung thời gian ra mắt lý tưởng cho các studio vừa và nhỏ.
+2. Chuẩn bị chiến dịch Marketing cộng đồng (Wishlist) tối thiểu 6 tháng trước khi phát hành.
+3. Nếu phát hành trong mùa Sale, bắt buộc phải có chính sách giảm giá ra mắt (Launch Discount) sâu.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer Note -->
+    <div class="footer-note">
+        Dữ liệu được nạp tự động từ SQL Server (<code>dbo.vw_etl_monitoring</code> & <code>dbo.vw_dashboard_ai_insights</code>) • Cập nhật ngày 22/11/2026
+    </div>
+</div>
+
+<script>
+    const etlData = {
+        4: "✅ [TỔNG QUAN VẬN HÀNH]: Đợt chạy pipeline 'Load_Staging_To_DWH' hoàn tất ở trạng thái THÀNH CÔNG (SUCCESS), xử lý an toàn 122,194 bản ghi.\n🔍 [CHẤT LƯỢNG DỮ LIỆU]: Toàn bộ 91/91 bài kiểm thử dbt Data Quality đạt tỷ lệ vượt qua 100% (bao gồm ràng buộc unique, not_null, khóa ngoại dwh.fact_game và đối soát 3 tầng Staging – Cleaned – Fact).\n💡 [KHUYẾN NGHỊ VẬN HÀNH]: Pipeline đạt chuẩn SLA ổn định, dữ liệu sẵn sàng cho chu kỳ làm mới (Data Refresh) trên Semantic Model Power BI mà không phát sinh rủi ro phân kỳ số liệu.",
+        5: "❌ [CẢNH BÁO SỰ CỐ]: Pipeline 'Incremental_Load_Staging' ghi nhận trạng thái THẤT BẠI (FAILED) sau 45 giây.\n⚠️ [NGUYÊN NHÂN]: Lỗi phát sinh: 'ConnectionResetError: An existing connection was forcibly closed by the remote host during batch chunk extraction'. Cơ chế giao dịch đã tự động Rollback, bảo toàn tính nguyên vẹn cho DWH.\n🛠️ [HÀNH ĐỘNG KHẮC PHỤC]: Không kích hoạt refresh Power BI; tiến hành kiểm tra kết nối nguồn, kiểm tra file rejected và chạy lại batch sau khi xử lý ngoại lệ.",
+        3: "✅ [TỔNG QUAN VẬN HÀNH]: Đợt chạy pipeline 'Incremental_Load_Staging' hoàn tất THÀNH CÔNG trong 3 giây, nạp tăng dần (CDC) an toàn 2 bản ghi mới.\n🔍 [CHẤT LƯỢNG DỮ LIỆU]: 91/91 dbt tests passed 100%. LSET Watermark đã tiến lên mốc thời gian mới.\n💡 [KHUYẾN NGHỊ VẬN HÀNH]: Dữ liệu mới đã sẵn sàng cho Power BI.",
+        2: "✅ [TỔNG QUAN VẬN HÀNH]: Đợt chạy pipeline 'Load_Staging_To_DWH' hoàn tất THÀNH CÔNG, nạp 122,191 bản ghi vào kho DWH.\n🔍 [CHẤT LƯỢNG DỮ LIỆU]: Khóa ngoại và quan hệ Star Schema được bảo toàn tuyệt đối.\n💡 [KHUYẾN NGHỊ VẬN HÀNH]: Chuẩn bị thực hiện incremental batch tiếp theo."
+    };
+
+    const bizData = {
+        '01': {
+            summary: "📊 [QUY MÔ & TĂNG TRƯỞNG]: Toàn hệ thống ghi nhận 122,193 tựa game chuẩn hóa. Tốc độ ra mắt tăng trưởng mạnh theo hàm mũ, đặt thị trường Steam vào trạng thái 'quá tải chú ý' (Attention Economy Deficit).\n🍁 [ĐIỂM RƠI MÙA VỤ]: Dữ liệu bộc lộ rõ hiện tượng dồn mùa quý 4: Mùa Thu dẫn đầu tuyệt đối với 34,248 game (đỉnh điểm là Tháng 10 với 11,870 game), trong khi Mùa Đông chỉ có 27,502 game (Tháng 6 chạm đáy với 9,092 game, thấp hơn đỉnh 23.4%).\n💡 [KHUYẾN NGHỊ CHIẾN LƯỢC]: Tránh dồn lịch ra mắt vào Tháng 10–11 nơi các bom tấn chiếm trọn banner trang chủ. Nên tận dụng 'khoảng lặng cạnh tranh' vào Tháng 1–2 hoặc Tháng 4–5 để tối ưu tỷ lệ hiển thị tự nhiên.",
+            recs: "1. Tận dụng tháng 1 và tháng 4 làm khung thời gian ra mắt lý tưởng cho các studio vừa và nhỏ.\n2. Chuẩn bị chiến dịch Marketing cộng đồng (Wishlist) tối thiểu 6 tháng trước khi phát hành.\n3. Nếu phát hành trong mùa Sale, bắt buộc phải có chính sách giảm giá ra mắt (Launch Discount) sâu."
+        },
+        '02': {
+            summary: "🏷️ [CHIẾN LƯỢC ĐỊNH GIÁ]: Giá bán trung bình của game trả phí duy trì ở mức $6.0. Phân khúc $10 – $29.99 được xác định là 'khoảng giá trọng tâm' (Pricing Sweet-spot), mang lại dung lượng thị trường và tổng doanh thu lớn nhất cho các studio tầm trung và Indie chất lượng cao.\n📉 [BẪY GIẢM GIÁ SÂU]: Phân tích tương quan giữa Mức giảm giá (Discount %) và Lượng người chơi (Peak CCU) khẳng định: Giảm giá sâu (50%–75%) chỉ phát huy hiệu quả đột phá khi tựa game đã có sẵn điểm đánh giá người dùng tích cực (≥80%). Đối với các game có chất lượng trung bình hoặc kém (<70%), giảm giá sâu không giúp đảo ngược xu hướng suy giảm người chơi.\n💡 [KHUYẾN NGHỊ THƯƠNG MẠI]: Tuyệt đối không định giá dưới $4.99 để tránh định kiến 'game rác' (asset-flip). Ưu tiên hoàn thiện trải nghiệm cốt lõi trong giai đoạn Early Access để đạt mốc Very Positive trước khi tham gia các đợt Sale lớn.",
+            recs: "1. Thiết lập mức giá niêm yết thâm nhập $12.99 – $19.99 cho các tựa game Indie/AA mới.\n2. Không lạm dụng giảm giá quá 30% trong 90 ngày đầu sau phát hành để bảo vệ giá trị thương hiệu.\n3. Tối ưu hóa nội dung cho nhóm Mọi lứa tuổi (All Ages) để mở rộng tệp người chơi tối đa."
+        },
+        '03': {
+            summary: "👑 [NGHỊCH LÝ KINH TẾ ĐUÔI DÀI]: Phân khúc Indie gánh tới 51.74% tổng doanh thu ước tính toàn sàn ($19.66 tỷ USD so với $18.34 tỷ USD của AAA), chứng minh sức mạnh thương mại vượt bậc từ tập hợp hàng chục nghìn studio độc lập.\n⚖️ [NĂNG SUẤT THƯƠNG MẠI & CHẤT LƯỢNG]: Mặc dù Indie chiếm ưu thế về tổng giá trị, mỗi tựa game AAA trung bình mang về $634,339, cao gấp 2.84 lần mức bình quân của Indie ($223,386). Về giới chuyên môn, AAA đạt độ phủ điểm Metacritic 8.60% (gấp 4.4 lần Indie), cho thấy sự vượt trội về quan hệ truyền thông.\n💻 [CƠ CẤU HỆ ĐIỀU HÀNH]: Windows Only giữ vị thế thống trị (79.14%). Tuy nhiên tổ hợp đa nền tảng Win+Mac+Linux (9.16%) đang mang lại biên lợi nhuận gia tăng đáng kể nhờ làn sóng bùng nổ của thiết bị chơi game cầm tay Steam Deck (Linux).",
+            recs: "1. Quỹ đầu tư nên giải ngân danh mục vào 5–10 studio Indie/AA tiềm năng thay vì dồn toàn bộ vốn vào 1 dự án AAA duy nhất.\n2. Đảm bảo hỗ trợ tốt bộ điều khiển (Controller) và khả năng tương thích Steam Deck (Linux) ngay ngày đầu ra mắt.\n3. Tận dụng truyền thông số (Streamers / TikTok) thay vì quá phụ thuộc vào điểm chấm chuyên môn Metacritic."
+        },
+        '04': {
+            summary: "🎯 [HIỆU ỨNG PARETO & RỦI RO SẢN PHẨM]: Giải phẫu danh mục vi mô của Electronic Arts minh chứng quy luật Pareto khắc nghiệt: Top 5 tựa game đầu bảng (dẫn đầu là Battlefield 2042 với $535.9M) gánh tới 76.36% tổng doanh thu toàn hãng. Hơn 120 tựa game còn lại chỉ đóng vai trò tạo phễu người chơi hoặc duy trì dòng tiền phụ.\n⚠️ [RỦI RO THƯƠNG HIỆU & CHẤT LƯỢNG]: Nhiều tựa game doanh thu khổng lồ của EA lại nằm ở góc 'Doanh thu cao — Đánh giá thấp' (Battlefield 2042 chỉ đạt 46.74% tích cực, EA Sports FC 25 đạt 49.81%). Đây là tín hiệu báo động về việc bào mòn uy tín thương hiệu (Brand Equity Erosion) trong dài hạn.\n🌟 [TIÊU CHUẨN NGÔI SAO BỀN VỮNG]: Các tựa game đạt mức hài lòng cao (≥80%) như It Takes Two (95.26%) hay Titanfall 2 (95.45%) chứng minh vòng đời doanh thu dài hạn bền vững nhờ cộng đồng trung thành và truyền miệng tích cực.",
+            recs: "1. Xây dựng kế hoạch bảo vệ các tựa game trụ cột (Flagship IP) bằng các bản cập nhật mùa (Live-ops) đều đặn.\n2. Khẩn trương lắng nghe phản hồi cộng đồng đối với các tựa game có đánh giá dưới 70% để tránh tẩy chay thương hiệu.\n3. Phân bổ ngân sách cân bằng giữa game thương mại kinh phí lớn và các dự án sáng tạo mang tính đột phá trải nghiệm."
+        }
+    };
+
+    function selectEtl(id, row) {
+        document.querySelectorAll('#etlTableBody tr').forEach(r => r.classList.remove('selected'));
+        row.classList.add('selected');
+        document.getElementById('aiEtlContent').innerText = etlData[id] || "Không có dữ liệu.";
+    }
+
+    function selectPage(pageKey, btn) {
+        document.querySelectorAll('.slicer-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const data = bizData[pageKey];
+        if (data) {
+            document.getElementById('aiBizSummary').innerText = data.summary;
+            document.getElementById('aiBizRecs').innerText = data.recs;
+        }
+    }
+</script>
+
+</body>
+</html>
