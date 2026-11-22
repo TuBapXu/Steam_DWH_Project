@@ -10,18 +10,54 @@ import sys
 import json
 from datetime import datetime
 import pyodbc
+import requests
 
 # Cấu hình kết nối SQL Server
-DEFAULT_CONN_STR = (
-    "DRIVER={ODBC Driver 17 for SQL Server};"
-    "SERVER=localhost,1433;"
-    "DATABASE=steam_games_DWH;"
-    "Trusted_Connection=yes;"
-    "TrustServerCertificate=yes;"
-)
+_WORKING_CONN_STR = None
 
 def get_db_connection():
-    return pyodbc.connect(DEFAULT_CONN_STR, autocommit=True)
+    global _WORKING_CONN_STR
+    if _WORKING_CONN_STR:
+        try:
+            return pyodbc.connect(_WORKING_CONN_STR, autocommit=True, timeout=5)
+        except Exception:
+            _WORKING_CONN_STR = None
+
+    pwd = os.environ.get("MSSQL_PASSWORD", "")
+    if not pwd:
+        env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+        if os.path.exists(env_path):
+            with open(env_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.startswith('MSSQL_PASSWORD='):
+                        pwd = line.strip().split('=', 1)[1].strip('"\'')
+                        break
+    if not pwd:
+        pwd = "thanhtu185B#2005"
+
+    # Thử 1: Docker localhost,1435 với sa (cực nhanh trên máy này)
+    c1 = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER=localhost,1435;DATABASE=steam_games_DWH;UID=sa;PWD={pwd};TrustServerCertificate=yes;"
+    try:
+        conn = pyodbc.connect(c1, autocommit=True, timeout=3)
+        _WORKING_CONN_STR = c1
+        return conn
+    except Exception:
+        pass
+
+    # Thử 2: Windows Auth localhost,1433
+    c2 = "DRIVER={ODBC Driver 17 for SQL Server};SERVER=localhost,1433;DATABASE=steam_games_DWH;Trusted_Connection=yes;TrustServerCertificate=yes;"
+    try:
+        conn = pyodbc.connect(c2, autocommit=True, timeout=3)
+        _WORKING_CONN_STR = c2
+        return conn
+    except Exception:
+        pass
+
+    # Thử 3: localhost,1433 với sa
+    c3 = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER=localhost,1433;DATABASE=steam_games_DWH;UID=sa;PWD={pwd};TrustServerCertificate=yes;"
+    conn = pyodbc.connect(c3, autocommit=True, timeout=5)
+    _WORKING_CONN_STR = c3
+    return conn
 
 # ---------------------------------------------------------------------------
 # CORE LLM CALLER (Tích hợp Gemini API với cơ chế Fallback thông minh)
@@ -29,7 +65,6 @@ def get_db_connection():
 def call_llm(prompt: str, fallback_text: str) -> str:
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        # Nếu chưa set env, thử tìm trong file .env
         env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
         if os.path.exists(env_path):
             with open(env_path, 'r', encoding='utf-8') as f:
@@ -39,15 +74,28 @@ def call_llm(prompt: str, fallback_text: str) -> str:
                         break
 
     if api_key:
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(prompt)
-            if response and response.text:
-                return response.text.strip()
-        except Exception as e:
-            print(f"[AI Explainer Warning] Không thể gọi Gemini API ({e}). Kích hoạt AI Fallback Engine.", flush=True)
+        models = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
+        last_err = ""
+        for m in models:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}"
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.4, "maxOutputTokens": 3000}
+                }
+                resp = requests.post(url, json=payload, timeout=25)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                    full_text = "".join(p.get("text", "") for p in parts).strip()
+                    if full_text:
+                        return full_text
+                else:
+                    last_err = f"{m} status {resp.status_code}"
+            except Exception as e:
+                last_err = f"{m} exception: {e}"
+                continue
+        print(f"[AI Explainer Warning] Không thể gọi Gemini API ({last_err}). Kích hoạt AI Fallback Engine.", flush=True)
 
     return fallback_text.strip()
 
@@ -153,7 +201,7 @@ def explain_dashboard_1_overview():
     # Phân bổ theo mùa
     cursor.execute("""
         SELECT d.season, COUNT(*) AS count_games
-        FROM dwh.fact_game f
+        FROM dwh.fact_game_snapshot f
         JOIN dwh.dim_date d ON f.date_key = d.date_key
         WHERE d.season IS NOT NULL AND d.date_key > 0
         GROUP BY d.season
@@ -164,7 +212,7 @@ def explain_dashboard_1_overview():
     # Tháng cao điểm vs trũng
     cursor.execute("""
         SELECT d.month, COUNT(*) AS count_games
-        FROM dwh.fact_game f
+        FROM dwh.fact_game_snapshot f
         JOIN dwh.dim_date d ON f.date_key = d.date_key
         WHERE d.date_key > 0
         GROUP BY d.month
@@ -226,7 +274,7 @@ def explain_dashboard_2_pricing():
             AVG(price) AS avg_price,
             AVG(CAST(discount AS FLOAT)) AS avg_discount,
             AVG(CAST(positive_reviews AS FLOAT) / NULLIF(positive_reviews + negative_reviews, 0)) * 100 AS avg_positive_ratio
-        FROM dwh.fact_game
+        FROM dwh.fact_game_snapshot
         WHERE price > 0
     """)
     row = cursor.fetchone()
@@ -285,7 +333,7 @@ def explain_dashboard_3_publishers():
             COUNT(DISTINCT f.game_key) AS total_games,
             ROUND(SUM(CAST((f.positive_reviews + f.negative_reviews) AS FLOAT) * 30.0 * f.price) / 1000000000.0, 2) AS est_rev_bil,
             ROUND(AVG(CAST(f.metacritic_score AS FLOAT)), 2) AS avg_metacritic
-        FROM dwh.fact_game f
+        FROM dwh.fact_game_snapshot f
         JOIN dwh.dim_publisher p ON f.publisher_key = p.publisher_key
         WHERE p.publisher_tier IN ('AAA', 'Indie')
         GROUP BY p.publisher_tier
