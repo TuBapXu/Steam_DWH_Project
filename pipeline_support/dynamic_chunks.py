@@ -10,19 +10,33 @@ from .full_load import (SQL_COLUMNS, make_full_plan, make_incremental_plan,
 from .sql_full_load import SqlFullLoadStore, identifier
 from .dwh_checks import staging_signature
 from .rejected import write_rejections
+from .audit import run_context, staging_metrics, utc_now, write_audit
+
+# Steps whose failures belong to staging (vs. one dynamic chunk branch).
+STAGING_OPERATIONS = ('prepare', 'finalize')
 
 
 def run_step(operation, *args, **kwargs):
     """Record failures without Mage trying to fetch an unfinished dynamic output."""
+    started = utc_now()
     try:
         return operation(*args, **kwargs)
     except Exception as error:
         from .mage_dwh import mage_context, failure
+        context = run_context(kwargs)
+        for value in args:
+            if isinstance(value, dict) and isinstance(value.get('plan'), dict):
+                context = {**context, **run_context(value)}
+                break
+        step = 'staging' if operation.__name__ in STAGING_OPERATIONS else 'chunk'
         try:
             _, connect, _ = mage_context()
             connection = connect()
             try:
-                failure(connection, 'steam_' + operation.__name__, error, print)
+                # finalize closes the staging step that began with prepare; others time themselves.
+                began = context.get('started_at') if operation.__name__ == 'finalize' else started
+                failure(connection, 'steam_' + operation.__name__, error, print,
+                        step=step, context=context, started_at=began)
             finally:
                 connection.close()
         except Exception as audit_error:
@@ -44,6 +58,9 @@ def prepare(root, *, connect=None, **options):
     maker = make_full_plan if mode == 'full' else make_incremental_plan
     plan = maker(source, chunk_size=options.get('chunk_size', 1000),
                  max_workers=options.get('max_workers', 2))
+    # Carried through every block result so all audit rows of this run share it.
+    plan['trigger_name'] = str(options.get('trigger_name') or 'manual')
+    plan['started_at'] = utc_now().isoformat(timespec='seconds')
     partition = options.get('_execution_partition') or options.get('execution_partition')
     if partition:
         identity = (str(partition), str(source), plan['source_size'], plan['source_mtime_ns'],
@@ -173,6 +190,8 @@ def finalize(receipts, connect):
               ('rows_read', 'bad_keys', 'bad_dates', 'cleaned_rows', 'local_duplicates')}
     totals.update(manifest['diagnostics'])
     with SqlFullLoadStore(connect, plan['run_id'], run_mode=plan['run_mode']) as store:
+        store.audit_context = dict(run_id=plan['run_id'], trigger_name=plan.get('trigger_name'),
+                                   started_at=plan.get('started_at'), totals=totals)
         result_path = folder / 'published.json'
         if result_path.exists():
             saved = json.loads(result_path.read_text(encoding='utf-8'))
@@ -181,7 +200,9 @@ def finalize(receipts, connect):
             return saved['result']
 
         def published(result):
-            result = {**result, 'run_id': plan['run_id']}
+            result = {**result, 'run_id': plan['run_id'],
+                      'trigger_name': plan.get('trigger_name', 'manual'),
+                      'started_at': plan.get('started_at')}
             saved = dict(result=result, signature=staging_signature(store.main))
             result_path.write_text(json.dumps(saved), encoding='utf-8')
             for receipt in receipts:
@@ -194,6 +215,11 @@ def finalize(receipts, connect):
             if plan['run_mode'] == 'incremental':
                 resumed = store.resume_incremental(plan)
                 if resumed:
+                    # This run re-delivers the pending batch already in staging: still one staging row.
+                    write_audit(store.main, pipeline_name='steam_staging_incremental', step='staging',
+                                status='SUCCESS', records_processed=resumed.get('records_processed', 0),
+                                commit=False, **store.audit_identity('incremental'),
+                                **staging_metrics(resumed))
                     return published(resumed)
             store.create_buffer()
             columns = ','.join(identifier(c) for c in SQL_COLUMNS) + ',__source_row'
@@ -210,11 +236,16 @@ def finalize(receipts, connect):
             if not accepted:
                 if plan['run_mode'] != 'incremental':
                     raise RuntimeError('No valid records; existing staging is preserved')
-                return published(dict(_staging_result=True, run_id=plan['run_id'],
-                                      status='SUCCESS', outcome='NO_VALID_RECORDS',
-                                      run_mode='incremental', records_processed=0,
-                                      inserted=0, updated=0, unchanged=0,
-                                      chunks=len(receipts), **totals))
+                empty = dict(_staging_result=True, run_id=plan['run_id'],
+                             status='SUCCESS', outcome='NO_VALID_RECORDS',
+                             run_mode='incremental', records_processed=0,
+                             inserted=0, updated=0, unchanged=0,
+                             chunks=len(receipts), **totals)
+                # Staging is unchanged, but the run (and its rejected rows) is still audited.
+                write_audit(store.main, pipeline_name='steam_staging_incremental', step='staging',
+                            status='SUCCESS', records_processed=0, commit=False,
+                            **store.audit_identity('incremental'), **staging_metrics(empty))
+                return published(empty)
             if plan['run_mode'] == 'incremental':
                 return published(store.publish_incremental(plan, accepted, dict(chunks=len(receipts), **totals)))
             store.publish(accepted)

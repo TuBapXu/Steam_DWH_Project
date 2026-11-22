@@ -26,6 +26,7 @@ def initialize(connection, database='steam_games_DWH'):
     execute_script('01_init_watermark_audit.sql')
     execute_script('02_create_star_schema_dwh.sql')
     execute_script('04_create_steam_rejected.sql')
+    execute_script('05_extend_etl_audit_log.sql')
     ensure_incremental_schema(connection)
     connection.execute("IF SCHEMA_ID('dbt_staging') IS NULL EXEC('CREATE SCHEMA dbt_staging')")
     orphans = connection.execute(f"""
