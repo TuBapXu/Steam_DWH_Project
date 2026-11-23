@@ -5,9 +5,10 @@
 | Giai đoạn | Công cụ | Trạng thái |
 |---|---|---|
 | **3.1 Data Ingestion (nạp vào Staging)** | Mage.ai + SQL Server | Chia chunk đọc tuần tự Parquet; mỗi chunk có nhánh Extract → Validate → Load chạy song song trên Mage. Full Load nạp staging trong giao dịch; Incremental Load cập nhật theo AppID và hash SHA-256; ghi nhận 8 dòng parser lỗi vào bảng rejected. |
-| **3.2 Data Transformation** | dbt (dbt-sqlserver) | Làm sạch, chuẩn hóa và xây dựng các bảng DWH. Hệ thống gồm **9 dbt models**, **91 data tests** (100% PASS) và **27 unit tests** kiểm định toàn diện. |
+| **3.2 Data Transformation** | dbt (dbt-sqlserver) | Làm sạch, chuẩn hóa và xây dựng các bảng DWH. Hệ thống gồm **9 dbt models**, **91 data tests** (100% PASS) và **32 unit tests** kiểm định toàn diện. |
 | **3.3 Data Warehouse (Star Schema)** | SQL Server 2022 | Mô hình hình sao hoàn chỉnh gồm Fact Snapshot, 4 Dimension cốt lõi (`dim_date`, `dim_game`, `dim_platform`, `dim_publisher`), 1 Dimension OS và 1 Bridge Table Many-to-Many (`bridge_game_platform`). Ràng buộc toàn vẹn khóa ngoại (FK) và nonclustered index tối ưu hóa truy vấn. |
 | **4.1 Semantic Model & BI Foundation** | Power BI Desktop | Kết nối DWH, thiết lập quan hệ 1-Nhiều (1:* Single filter), Date Hierarchy, phân nhóm dải tuổi/dải giá, cấu hình bảng cầu thể loại `dim_game_genres`, viết hệ thống DAX Measures nền tảng (KPIs, CCU, Doanh số ước tính Boxleiter) và xuất file template `Steam_Template.pbix` / `Steam_Template.pbit`. |
+| **4.2 Advanced Dashboards & AI Copilot** | Power BI + Google Gemini API | Hoàn thiện **6 trang Dashboard Full HD 1080p** (Thị trường, Định giá, Nhà phát hành, Sentiment, Cây phân rã AI, Giám sát ETL) kết hợp ứng dụng **Steam Copilot Web App** (cổng 5000) và module **AI ETL Explainer** tự động sinh nhận định từ log DWH. |
 
 ## Kiến trúc tổng thể
 
@@ -16,18 +17,21 @@ games.csv ──► Mage.ai pipeline ──► SQL Server (steam_games_DWH)
                                      ├── dbo.stg_steam_games          (Staging chính thức)
                                      ├── dbo.stg_steam_games_rejected (8 bản ghi lỗi parser)
                                      ├── dbo.etl_steam_incremental_batch (Theo dõi batch)
-                                     └── dbo.etl_audit_log            (Nhật ký thực thi)
+                                     ├── dbo.etl_audit_log            (Nhật ký thực thi & metrics)
+                                     └── dbo.dashboard_ai_insights    (Nhận định tự động từ AI)
 
 dbo.stg_steam_games ──► dbt ──► dbt_staging.stg_steam_games_cleaned (table)
                                        │
                                        ├──► dwh.dim_* & dwh.bridge_*
                                        └──► dwh.fact_game_snapshot
                                                     │
-                                                    ▼
-                                       Power BI (Semantic Model / Tabular Cube)
-                                       ├── Date Hierarchy & Star Schema (1:*)
-                                       ├── DAX Measures (Volume, Pricing, Engagement, Sentiment)
-                                       └── bi_dashboard/Steam_Template.pbix
+                                                    ├───────────────────────────────┐
+                                                    ▼                               ▼
+                                       Power BI (6 Dashboards Full HD)    Steam Copilot Web App
+                                       ├── Date Hierarchy & Star Schema   ├── Flask + Gemini 2.5 Flash
+                                       ├── DAX Measures & Slicers         ├── GenAI Grounding Engine
+                                       ├── AI Decomposition Tree          ├── Natural Language to SQL
+                                       └── bi_dashboard/Steam_Template    └── bi_dashboard/steam_copilot.py
 ```
 
 Docker Compose gồm `mage`, `sqlserver` và service `dbt` chạy theo yêu cầu.
@@ -36,7 +40,7 @@ Docker Compose gồm `mage`, `sqlserver` và service `dbt` chạy theo yêu cầ
 
 ```
 Steam_DWH_Project/
-├── bi_dashboard/        # Template Power BI (.pbix, .pbit) và hướng dẫn Semantic Model
+├── bi_dashboard/        # 6 Dashboards Power BI (.pbix, .pbit), Steam Copilot Web App (Flask + Gemini), AI ETL Explainer
 ├── data/                # Chứa games.csv (có .gitkeep, file CSV KHÔNG đẩy lên Git)
 ├── database_setup/      # Script DDL khởi tạo DB, Star Schema, bảng rejected, audit, bootstrap
 ├── dbt_transform/       # Profile, 9 models staging/marts, macro, 91 data tests
@@ -228,13 +232,26 @@ docker compose exec -T -w /home/src mage python -m unittest discover -s tests -p
 docker compose exec -T -w /home/src/mage_pipeline mage python /home/src/tests/verify_mage_incremental.py
 ```
 
+### 8. Khởi chạy Trợ lý AI Steam Copilot & AI Explainer
+
+Ứng dụng Web Copilot hỗ trợ người dùng phân tích nghiệp vụ hỏi đáp dữ liệu tự nhiên bằng Tiếng Việt / Tiếng Anh có trích dẫn dữ liệu nguồn:
+
+```powershell
+# 1. Khởi chạy Steam Copilot Web App (cổng 5000)
+python bi_dashboard/steam_copilot.py
+# Mở trình duyệt truy cập: http://localhost:5000
+
+# 2. Chạy module tự động phân tích và giải thích log ETL & Data Quality
+python bi_dashboard/ai_etl_explainer.py
+```
+
 ---
 
 ## Đối soát kết quả dữ liệu
 
-Sau khi lượt chạy Full Load hoàn tất, số dòng trong toàn bộ database đạt trạng thái chuẩn xác như sau:
+Sau khi lượt chạy Full Load và các kịch bản kiểm thử hoàn tất, số dòng trong toàn bộ database đạt trạng thái chuẩn xác như sau:
 
-| Tên bảng | Số dòng thực tế | Vai trò trong hệ thống |
+| Tên bảng / View | Số dòng thực tế | Vai trò trong hệ thống |
 |---|---:|---|
 | `dbo.stg_steam_games` | **125.856** | Bảng Staging chính thức sau khi khử trùng AppID toàn file |
 | `dbo.stg_steam_games_rejected` | **8** | Bảng cách ly các bản ghi lỗi parser định dạng AppID |
@@ -246,6 +263,10 @@ Sau khi lượt chạy Full Load hoàn tất, số dòng trong toàn bộ databa
 | `dwh.dim_operating_system` | **3** | Chiều Hệ điều hành (1: Windows, 2: Mac, 3: Linux) |
 | `dwh.bridge_game_platform` | **163.600** | Bảng cầu Many-to-Many giữa Game và Hệ điều hành |
 | `dwh.fact_game_snapshot` | **125.856** | Bảng Fact trung tâm (Grain: 1 dòng = 1 game tại thời điểm nạp) |
+| `dbo.etl_audit_log` | **33** | Bảng nhật ký audit toàn diện (ghi nhận từng bước staging, dbt, check, chunk) |
+| `dbo.dashboard_ai_insights` | **4** | Bảng lưu nhận định phân tích tự động từ AI ETL Explainer |
+| `dbo.vw_etl_monitoring` | **33** | View tổng hợp chỉ số hiệu năng ETL phục vụ Dashboard 6 |
+| `dbo.vw_dashboard_ai_insights` | **4** | View cung cấp khối giải thích AI trực quan hóa trên Power BI |
 
 Truy vấn kiểm tra nhanh trong SQL Server:
 ```sql
@@ -264,15 +285,15 @@ SELECT TOP 5 * FROM dbo.etl_audit_log ORDER BY log_id DESC;
 
 ---
 
-## Giai đoạn BI: Semantic Model & Power BI Dashboard
+## Giai đoạn BI: Semantic Model & Hệ thống 6 Power BI Dashboards
 
-Thư mục `bi_dashboard/` lưu trữ cấu trúc Semantic Model nền tảng và template chuẩn:
-- `Steam_Template.pbix`: File làm việc Power BI đã kết nối sẵn vào DWH và thiết lập quan hệ Star Schema.
+Thư mục `bi_dashboard/` lưu trữ cấu trúc Semantic Model nền tảng, template chuẩn, bộ 6 báo cáo Dashboard và mã nguồn trợ lý AI:
+- `Steam_Template.pbix`: File làm việc Power BI đã kết nối sẵn vào DWH và thiết lập quan hệ Star Schema chuẩn Full HD (1920×1080).
 - `Steam_Template.pbit`: File mẫu template (dung lượng < 1 MB) chứa toàn bộ Schema, M Query, quan hệ và DAX measures; thành viên khác mở lên sẽ tự refresh với database cục bộ.
 
 ### Kiến trúc Semantic Model trong Power BI:
 1. **Quan hệ Star Schema:** Kết nối 1-Nhiều (`1:* Single filter`) từ các Dimension (`dim_game`, `dim_date`, `dim_platform`, `dim_publisher`) vào `fact_game_snapshot`.
-2. **Phân cấp ngày (Date Hierarchy):** `Year` $\rightarrow$ `Quarter` $\rightarrow$ `Month` $\rightarrow$ `Full Date` phục vụ phân tích xu hướng và Drill-down.
+2. **Phân cấp ngày (Date Hierarchy):** `Year` → `Quarter` → `Month` → `Full Date` phục vụ phân tích xu hướng và Drill-down.
 3. **Bảng cầu thể loại (`dim_game_genres`):** Tách từ chuỗi gộp trong Power Query thành cấu trúc chuẩn để trực quan hóa Top 10 thể loại.
 4. **Cột phân nhóm (Calculated Columns):**
    * `Age Bracket`: Phân nhóm dải độ tuổi (`All Ages (0+)`, `Pre-Teen (7-12)`, `Teen (13-16)`, `Mature (17+/18+)`).
@@ -283,10 +304,42 @@ Thư mục `bi_dashboard/` lưu trữ cấu trúc Semantic Model nền tảng v�
    * **Pricing & Revenue:** `Avg Price`, `Avg Paid Price`, `Max Price`, `Avg Discount`, `Estimated Revenue` (Doanh số ước tính theo phương pháp Boxleiter chuẩn Steam).
    * **Reviews & Sentiment:** `Total Positive Reviews`, `Total Negative Reviews`, `Total Reviews`, `Positive Review Ratio` (%), `Avg Metacritic Score`, `Avg User Score`.
 
-### Kế hoạch 3 trang Dashboard tiếp theo:
-* **Trang 1 - Overview & Mùa vụ phát hành (Descriptive):** Hàng KPI cards, biểu đồ đường xu hướng năm/tháng, phân tích mùa vụ (Quý/Mùa/Holiday), phân bố Top 10 thể loại và slicers đa chiều.
-* **Trang 2 - Hiệu suất thương mại & Chiến lược giá (Diagnostic):** Scatter plot tương quan Giảm giá (%) vs CCU & User Score, tỷ trọng Free vs Trả phí, thời gian chơi theo dải độ tuổi, drill-down thời gian.
-* **Trang 3 - Đánh giá Nhà phát hành & Nền tảng:** So sánh phân tầng AAA vs Indie (doanh số ước tính, số lượng game, điểm Metacritic), cơ cấu hệ điều hành và cấu hình trang Drill-through chi tiết từng game.
+### Hệ thống 6 Power BI Dashboards (Full HD 1920×1080)
+Dự án đã hoàn thiện 6 trang báo cáo chuyên sâu phục vụ đa góc nhìn phân tích từ vĩ mô thị trường đến vi mô tựa game và kỹ thuật vận hành:
+
+1. **Dashboard 1 - Tổng quan Thị trường & Xu hướng Phát hành (Market Overview & Trends):**
+   - Hàng KPI Cards vĩ mô (`Total Games`, `Free Ratio`, `Total Publishers`, `Avg Price`).
+   - Biểu đồ đường xu hướng ra mắt game theo năm/tháng với tính toán tăng trưởng YoY.
+   - Phân tích mùa vụ (Quý / Mùa / Kỳ nghỉ lễ Summer & Winter Sale) và mật độ game ra mắt mỗi ngày.
+   - Cơ cấu Top 10 thể loại phổ biến và hệ thống Slicers lọc đa chiều.
+2. **Dashboard 2 - Hiệu suất Thương mại & Chiến lược Giá (Commercial Performance & Pricing Strategy):**
+   - Phân tích cơ cấu Free-to-Play vs Trả phí (Paid).
+   - Ma trận phân tán (Scatter Plot) đo lường tương quan giữa Tỷ lệ Giảm giá (`discount`) vs `peak_ccu` và `user_score`.
+   - Phân bổ thời lượng chơi trung bình (`avg_playtime_hours`) theo các dải độ tuổi (`required_age`).
+3. **Dashboard 3 - Đánh giá Nhà phát hành & Nền tảng (Publishers & Platform Analysis):**
+   - So sánh đối đầu giữa phân khúc AAA vs Indie (Doanh thu Boxleiter ước tính, số lượng tựa game, Điểm Metacritic chuyên gia).
+   - Cơ cấu hỗ trợ hệ điều hành (Windows, macOS, Linux đơn lẻ và phối hợp).
+   - Tích hợp trang **Drill-through** chi tiết xem sâu vào từng tựa game cụ thể.
+4. **Dashboard 4 - Thấu cảm Người chơi & Phân tích Đánh giá (Player Sentiment & Engagement):**
+   - Phân tích tương quan giữa điểm số chuyên môn (`Metacritic Score`) và đánh giá cộng đồng (`User Score`).
+   - Tỷ trọng đánh giá Tích cực vs Tiêu cực và phân nhóm mức độ hài lòng của game thủ.
+   - Tương quan giữa độ gắn kết (giờ chơi thực tế) với khối lượng đánh giá.
+5. **Dashboard 5 - Phân tích Chi tiết & Cây Phân rã Doanh thu AI (Deep Dive & Revenue Decomposition Tree):**
+   - Ứng dụng **AI Decomposition Tree** (Cây phân rã AI) bóc tách chỉ số Doanh thu ước tính tự động theo `Thể loại` → `Dải giá` → `Nhà phát hành`.
+   - Bảng phân tích chi tiết hỗ trợ tìm kiếm và sắp xếp các tựa game ngoại lai (Outliers).
+6. **Dashboard 6 - Giám sát Vận hành ETL & Chất lượng Dữ liệu (ETL Performance & Data Quality Monitoring):**
+   - Dành riêng cho đội ngũ Data Engineer giám sát trực quan 33 lượt log từ `dbo.vw_etl_monitoring`.
+   - Tỷ lệ thành công Pipeline (Success Rate), phân bổ thời gian thực thi của từng bước (Staging, dbt, Audit).
+   - Trực quan hóa kết quả 91/91 dbt tests đạt chuẩn và khối hiển thị nhận định tự động từ AI (`dbo.vw_dashboard_ai_insights`).
+
+### Ứng dụng Trợ lý AI Steam Copilot & Module AI ETL Explainer
+- **Steam Copilot Web App (`bi_dashboard/steam_copilot.py`):**
+  - Giao diện Web trợ lý ảo chạy trên cổng `http://localhost:5000`.
+  - Tích hợp mô hình ngôn ngữ lớn **Google Gemini 2.5 Flash** (hỗ trợ OpenAI fallback).
+  - Cơ chế **Grounding Engine**: Chuyển đổi ngôn ngữ tự nhiên (Tiếng Việt / Tiếng Anh) thành câu truy vấn SQL Server trực tiếp, ép AI chỉ trả lời dựa trên dữ liệu thật của DWH để loại bỏ hoàn toàn hiện tượng ảo giác (Hallucination). Tự động render biểu đồ Chart.js và bảng dữ liệu tương tác.
+- **AI ETL Explainer (`bi_dashboard/ai_etl_explainer.py`):**
+  - Tự động kích hoạt sau khi chạy pipeline để phân tích log `dbo.etl_audit_log` và kết quả kiểm định dbt.
+  - Tự động diễn giải nguyên nhân lỗi, đánh giá độ ổn định và ghi nhận định vào `dbo.dashboard_ai_insights` để Power BI hiển thị.
 
 ---
 
@@ -307,9 +360,18 @@ Thư mục `bi_dashboard/` lưu trữ cấu trúc Semantic Model nền tảng v�
 
 ---
 
-## Công nghệ sử dụng
+## Lý do lựa chọn công nghệ (Technology Stack Rationale)
 
-Mage.ai, dbt Core (dbt-sqlserver), SQL Server 2022, Docker Compose, Python (pandas, pyodbc), Power BI Desktop (DAX, VertiPaq Tabular Engine).
+Hệ thống được thiết kế theo tư duy **Modern Data Stack (MDS)** với nguyên tắc tách biệt trách nhiệm (Separation of Concerns), bảo đảm tính tái lập, khả năng mở rộng và hiệu năng phân tích cao nhất:
+
+| Công nghệ | Vai trò | Vì sao lựa chọn? (So sánh & Ưu thế vượt trội) |
+|---|---|---|
+| **Mage.ai** | Data Ingestion & Orchestration | **Thay thế Apache Airflow truyền thống:** Airflow quá cồng kềnh với nhiều services phụ thuộc (Webserver, Scheduler, PostgreSQL, Celery/Redis). Mage.ai chạy gọn nhẹ trong container đơn, lập trình pipeline theo phong cách Native Python trực quan, hỗ trợ chia dynamic blocks theo chunk Parquet cực mượt, tích hợp sẵn cơ chế kiểm tra dữ liệu và theo dõi luồng dữ liệu thời gian thực. |
+| **dbt Core (dbt-sqlserver)** | Data Transformation & Quality Control | **Thay thế Stored Procedures / SSIS:** dbt áp dụng triết lý *Software Engineering for Data*: toàn bộ biến đổi được viết bằng SQL SELECT thuần túy, quản lý phiên bản qua Git, sử dụng Jinja macros để tự động hóa mã lặp lại. dbt tích hợp sẵn kiểm thử chất lượng tự động (**91 data tests** PASS 100%) và tự động sinh tài liệu dòng dữ liệu (Data Lineage / `dbt docs`). |
+| **Microsoft SQL Server 2022** | Staging & Enterprise Data Warehouse | **Hệ quản trị CSDL chuẩn doanh nghiệp:** Đóng vai trò kép (Staging Database + Star Schema DWH). Khác với NoSQL, SQL Server cung cấp tính toàn vẹn giao dịch ACID tuyệt đối, kiểm soát chặt chẽ ràng buộc khóa ngoại (Foreign Keys) và hỗ trợ Nonclustered Indexing tối ưu cho các truy vấn tổng hợp BI. Ngoài ra, SQL Server tương thích tự nhiên 100% với Power BI. |
+| **Microsoft Power BI Desktop** | Semantic Modeling & Visual Analytics | **Nền tảng Business Intelligence hàng đầu:** Sở hữu bộ máy in-memory dạng cột **VertiPaq** siêu nhanh, hỗ trợ mô hình hóa quan hệ Star Schema 1-Nhiều chuẩn mực, hệ thống hàm **DAX** mạnh mẽ để tính toán chỉ số phức tạp (Boxleiter Revenue, CCU tương quan, Time Intelligence), cùng khả năng tương tác chiều sâu (Drill-through, AI Decomposition Tree). |
+| **Docker & Docker Compose** | Infrastructure as Code & Containerization | **Chuẩn hóa môi trường triển khai:** Đóng gói độc lập toàn bộ các dịch vụ (Mage, SQL Server, dbt) vào các container, loại bỏ hoàn toàn lỗi xung đột môi trường (*"chạy được trên máy tôi nhưng lỗi trên máy bạn"*), thiết lập mạng nội bộ an toàn và giúp khởi chạy toàn bộ hạ tầng chỉ bằng duy nhất một câu lệnh `docker compose up -d`. |
+| **Generative AI (Google Gemini 2.5 Flash)** | AI Copilot & Automated Insight Generation | **Tự động hóa thông minh (Augmented Analytics):** Kết hợp mô hình ngôn ngữ lớn (LLM) với cơ chế **Grounding Engine** trực tiếp từ SQL Server. Giải quyết bài toán "ảo giác" (Hallucination) bằng cách ép AI chỉ diễn giải dựa trên số liệu thực tế của DWH và log ETL; hỗ trợ người dùng cuối hỏi đáp kinh doanh bằng ngôn ngữ tự nhiên thông qua giao diện Web Copilot. |
 
 ## Tác giả
 
