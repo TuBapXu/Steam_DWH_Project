@@ -48,7 +48,7 @@ Steam_DWH_Project/
 │   ├── pipelines/       # Định nghĩa pipeline steam_staging_pipeline
 │   └── io_config.yaml   # Cấu hình kết nối SQL Server (đọc mật khẩu từ biến môi trường)
 ├── pipeline_support/    # Module dùng chung: chunking, validation, pyodbc array insert, đối soát
-├── tests/               # 27 unit tests & kịch bản kiểm thử tích hợp (verify_mage_incremental)
+├── tests/               # 32 unit tests & kịch bản kiểm thử tích hợp (verify_mage_incremental)
 ├── docs/                # Tài liệu chi tiết các block Mage và đối soát end-to-end
 ├── .env.example         # Mẫu cấu hình biến môi trường
 ├── .env                 # Biến môi trường thật, chứa mật khẩu (KHÔNG đẩy lên Git)
@@ -97,9 +97,53 @@ Nếu gián đoạn sau khi nạp staging, chạy lại toàn bộ pipeline vớ
 | `dbt_timeout_seconds` | `3600` | Thời gian chờ tối đa cho tiến trình transform của dbt |
 | `demo_lset` | `null` | Không dùng để lọc ngày; quản lý tự động theo batch |
 | `demo_cet` | `null` | Được tính toán tự động sau mỗi lượt incremental |
+| `trigger_name` | `manual` | Tên trigger ghi vào audit log; các Schedule Trigger tự điền tên của mình |
+
+### Lập lịch ETL (Schedule Trigger)
+
+Trigger được khai báo dạng code trong `mage_pipeline/pipelines/steam_staging_pipeline/triggers.yaml`, Mage tự nạp khi khởi động. Giờ cron tính theo **UTC** (container chạy UTC, giờ Việt Nam = UTC+7).
+
+| Trigger | Cron (UTC) | Giờ Việt Nam | Trạng thái | Mục đích |
+|---|---|---|---|---|
+| `monthly_incremental` | `0 0 1 * *` | 07:00 ngày 1 hằng tháng | `active` | Lịch chính: incremental theo AppID + row_hash |
+| `test_every_15_min` | `*/15 * * * *` | Mỗi 15 phút | `inactive` | Bật tạm trong Mage UI (Triggers) để chứng minh trigger tự chạy, xong thì tắt |
+
+Cả hai trigger đặt `skip_if_previous_running: true` (không chạy chồng lượt) và `timeout: 7200` giây. Trigger chạy lại an toàn: batch dở dang được tiếp tục với cùng cửa sổ LSET/CET.
 
 ### Ghi nhận trạng thái và lỗi (Audit & Rejection)
-- Mỗi lần thực thi ghi nhận một bản ghi vào `dbo.etl_audit_log` gồm `pipeline_name`, `run_date`, `status` (`SUCCESS` hoặc `FAILED`), `records_processed`, `error_message`.
+- Mỗi **bước** của một lượt chạy ghi đúng **một dòng** vào `dbo.etl_audit_log`; các dòng của cùng một lần chạy pipeline dùng chung `run_id`. Lần chạy lại một batch incremental bị lỗi là một `run_id` mới; dòng `staging` của nó có `"resumed": true` và cùng `batch_id` (trong `metrics_json`) với lần lỗi trước đó. Cột được thêm bằng `database_setup/05_extend_etl_audit_log.sql` (bootstrap tự chạy, không mất dữ liệu cũ).
+
+| Cột | Ý nghĩa |
+|---|---|
+| `pipeline_name`, `run_date`, `status`, `records_processed`, `error_message` | Các cột gốc (`status` = `SUCCESS`/`FAILED`) |
+| `run_id` | Mã lượt chạy (32 ký tự hex), dùng để gom các bước |
+| `step` | `staging`, `dbt`, `check`; `chunk` (một chunk lỗi); `pipeline` (lỗi do callback ghi) |
+| `trigger_name`, `run_mode` | Trigger đã chạy (`manual` nếu chạy tay) và `full`/`incremental` |
+| `started_at`, `finished_at`, `duration_sec` | Thời điểm bắt đầu/kết thúc (UTC) và thời lượng của bước |
+| `inserted`, `updated`, `unchanged`, `rejected` | Số bản ghi thêm mới / cập nhật / không đổi / bị loại ở bước staging |
+| `dbt_tests` | Số dbt test đã chạy (0 nếu dbt được bỏ qua do `NO_VALID_RECORDS`) |
+| `checks_failed` | Số kiểm tra đối soát DWH thất bại |
+| `metrics_json` | Chi tiết bổ sung dạng JSON (số dòng đọc, chunk, cửa sổ LSET/CET, số dòng từng bảng DWH…) |
+
+Truy vấn mẫu một dòng cho mỗi lượt chạy (dùng cho dashboard giám sát):
+
+```sql
+SELECT run_id, MAX(trigger_name) AS trigger_name, MAX(run_mode) AS run_mode,
+       MIN(started_at) AS started_at, MAX(finished_at) AS finished_at,
+       DATEDIFF(SECOND, MIN(started_at), MAX(finished_at)) AS duration_sec,
+       -- Trạng thái cuối = trạng thái của dòng ghi sau cùng (lượt chạy lại thành công thì run là SUCCESS)
+       (SELECT TOP 1 l.status FROM dbo.etl_audit_log l WHERE l.run_id = a.run_id ORDER BY l.log_id DESC) AS run_status,
+       SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed_steps,
+       MAX(CASE WHEN step = 'staging' THEN inserted END) AS inserted,
+       MAX(CASE WHEN step = 'staging' THEN updated END) AS updated,
+       MAX(CASE WHEN step = 'staging' THEN rejected END) AS rejected,
+       MAX(CASE WHEN step = 'dbt' THEN dbt_tests END) AS dbt_tests,
+       MAX(CASE WHEN step = 'check' THEN checks_failed END) AS checks_failed
+FROM dbo.etl_audit_log a
+WHERE run_id IS NOT NULL
+GROUP BY run_id
+ORDER BY MIN(started_at) DESC;
+```
 - Các bản ghi thiếu AppID hoặc sai định dạng số trong file gốc được cách ly vào bảng `dbo.stg_steam_games_rejected` kèm lý do chi tiết và nội dung thô.
 
 ---
@@ -177,10 +221,10 @@ docker compose run --rm --no-deps dbt build
 # Chạy riêng bộ kiểm tra chất lượng dữ liệu
 docker compose run --rm --no-deps dbt test
 
-# Chạy bộ 27 unit tests python trong container Mage
+# Chạy bộ 32 unit tests python trong container Mage
 docker compose exec -T -w /home/src mage python -m unittest discover -s tests -p "test_*.py"
 
-# Chạy kịch bản kiểm thử tích hợp Full & Incremental V1/V2/V3
+# Kiểm thử tích hợp trên DB tạm: Full/Incremental V1/V2/V3, lỗi staging, lỗi dbt và các dòng audit
 docker compose exec -T -w /home/src/mage_pipeline mage python /home/src/tests/verify_mage_incremental.py
 ```
 

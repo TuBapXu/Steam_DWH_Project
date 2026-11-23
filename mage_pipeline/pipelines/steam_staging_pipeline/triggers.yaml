@@ -1,0 +1,41 @@
+triggers:
+- description: null
+  envs: []
+  last_enabled_at: 2026-11-22 04:53:45.158968+00:00
+  name: monthly_incremental
+  pipeline_uuid: steam_staging_pipeline
+  schedule_interval: 0 0 1 * *
+  schedule_type: time
+  settings:
+    skip_if_previous_running: true
+    timeout: 7200
+  sla: null
+  start_time: 2026-11-22 00:00:00
+  status: active
+  token: null
+  variables:
+    chunk_size: 1000
+    dbt_timeout_seconds: 3600
+    demo_cet: null
+    demo_lset: null
+    max_workers: 2
+    run_mode: incremental
+    source_file: data/games.csv
+    trigger_name: monthly_incremental
+- name: test_every_15_min
+  schedule_interval: '*/15 * * * *'
+  schedule_type: time
+  settings:
+    skip_if_previous_running: true
+    timeout: 7200
+  start_time: 2026-11-22 00:00:00
+  status: inactive
+  variables:
+    chunk_size: 1000
+    dbt_timeout_seconds: 3600
+    demo_cet: null
+    demo_lset: null
+    max_workers: 2
+    run_mode: incremental
+    source_file: data/games.csv
+    trigger_name: test_every_15_min

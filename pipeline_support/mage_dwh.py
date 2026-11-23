@@ -1,9 +1,9 @@
 """Mage bridge: same SQL configuration, dbt execution, reconciliation, step audit."""
-from datetime import datetime
 import json
 import os
 from pathlib import Path
 
+from .audit import run_context, utc_now, write_audit
 from .dbt_runner import build_dbt
 from .dwh_checks import inspect_dwh, staging_signature
 from .sql_full_load import acquire_staging_lock, batch_window, require_pending_batch
@@ -47,11 +47,15 @@ def lock_warehouse(connection):
         raise RuntimeError('Another DWH transform/check is running')
 
 
-def audit(connection, step, status, rows, error=None, *, completed_batch=None):
+def audit(connection, pipeline_name, status, rows, error=None, *, completed_batch=None,
+          step='pipeline', context=None, started_at=None, **fields):
+    """One etl_audit_log row for one pipeline step; context carries run_id/run_mode/trigger."""
     connection.rollback()
-    connection.execute('INSERT INTO dbo.etl_audit_log '
-        '(pipeline_name,run_date,status,records_processed,error_message) VALUES (?,?,?,?,?)',
-        step, datetime.now(), status, rows, error)
+    context = context or {}
+    write_audit(connection, pipeline_name=pipeline_name, step=step, status=status,
+                records_processed=rows, error=error, run_id=context.get('run_id'),
+                run_mode=context.get('run_mode'), trigger_name=context.get('trigger_name'),
+                started_at=started_at or context.get('started_at'), commit=False, **fields)
     if completed_batch:
         connection.execute('''
             UPDATE dbo.etl_steam_incremental_batch SET completed_at=SYSUTCDATETIME()
@@ -60,9 +64,11 @@ def audit(connection, step, status, rows, error=None, *, completed_batch=None):
     connection.commit()
 
 
-def failure(connection, step, exc, progress):
+def failure(connection, pipeline_name, exc, progress, *, step='pipeline', context=None,
+            started_at=None, metrics=None, **fields):
     try:
-        audit(connection, step, 'FAILED', 0, str(exc)[:4000])
+        audit(connection, pipeline_name, 'FAILED', 0, str(exc)[:4000], step=step,
+              context=context, started_at=started_at, metrics=metrics, **fields)
         return AUDITED
     except Exception:
         progress('Could not record the DWH step failure in etl_audit_log')
@@ -76,6 +82,8 @@ def run_transform(staging_result, *, project_root, connect, environment,
         raise ValueError('Run the staging and audit blocks successfully before dbt')
     connection = connect()
     window = None
+    started_at = utc_now()
+    context = run_context(staging_result)
     try:
         lock_warehouse(connection)
         batch_id = staging_result.get('batch_id')
@@ -91,6 +99,9 @@ def run_transform(staging_result, *, project_root, connect, environment,
             raise RuntimeError('Staging count changed after Full Load; rerun from extract')
         if staging_result.get('outcome') == 'NO_VALID_RECORDS':
             progress('DBT SKIPPED: no valid incremental records.')
+            audit(connection, 'steam_dbt_transform', 'SUCCESS', 0, step='dbt', context=context,
+                  started_at=started_at, dbt_tests=0,
+                  metrics=dict(dbt='SKIPPED', reason='NO_VALID_RECORDS'))
             return dict(_dbt_transform_result=True, status='SUCCESS', staging=staging_result,
                         staging_signature=before, dbt=dict(status='SKIPPED', reason='NO_VALID_RECORDS'))
         dbt_env = dict(environment, STEAM_CHANGE_BATCH=batch_id or '',
@@ -101,11 +112,15 @@ def run_transform(staging_result, *, project_root, connect, environment,
                         timeout_seconds=timeout_seconds, progress=progress)
         if before != staging_signature(connection):
             raise RuntimeError('Staging changed during dbt build; rerun the pipeline')
-        audit(connection, 'steam_dbt_transform', 'SUCCESS', int(before[0]))
+        audit(connection, 'steam_dbt_transform', 'SUCCESS', int(before[0]), step='dbt',
+              context=context, started_at=started_at, dbt_tests=dbt['tests'],
+              metrics=dict(models=dbt['models'], tests=dbt['tests'], total=dbt['total'],
+                           **(window or {})))
         return dict(_dbt_transform_result=True, status='SUCCESS', staging=staging_result,
                     staging_signature=before, dbt=dbt)
     except Exception as exc:
-        prefix = failure(connection, 'steam_dbt_transform', exc, progress)
+        prefix = failure(connection, 'steam_dbt_transform', exc, progress, step='dbt',
+                         context=context, started_at=started_at)
         if window:
             progress(f"DBT FAILED: LSET={window['lset']}, CET={window['cet']}; batch remains pending.")
         raise RuntimeError(prefix + f'dbt transform failed: {exc}') from exc
@@ -113,10 +128,21 @@ def run_transform(staging_result, *, project_root, connect, environment,
         connection.close()
 
 
+def check_metrics(report):
+    """Compact copy of the reconciliation report for etl_audit_log.metrics_json."""
+    keys = ('status', 'row_counts', 'checks', 'failed_checks', 'info', 'incremental', 'outcome')
+    metrics = {key: report[key] for key in keys if key in report}
+    metrics['checks_total'] = len(report.get('checks') or {})
+    return metrics
+
+
 def check_results(transform_result, *, connect, progress=print):
     if not isinstance(transform_result, dict) or not transform_result.get('_dbt_transform_result') or transform_result.get('status') != 'SUCCESS':
         raise ValueError('Run dbt successfully before checking the DWH')
     connection = connect()
+    started_at = utc_now()
+    context = run_context(transform_result)
+    report = None
     try:
         lock_warehouse(connection)
         if staging_signature(connection) != transform_result['staging_signature']:
@@ -143,7 +169,8 @@ def check_results(transform_result, *, connect, progress=print):
             raise RuntimeError('DWH reconciliation failed: ' + json.dumps(report['failed_checks']) +
                                '. Existing incremental dbt models do not refresh old games automatically.')
         audit(connection, 'steam_dwh_check', 'SUCCESS', report['row_counts']['fact_game_snapshot'],
-              completed_batch=batch_id)
+              completed_batch=batch_id, step='check', context=context, started_at=started_at,
+              checks_failed=0, metrics=check_metrics(report))
         if window:
             report['incremental']['lset_after'] = window['cet']
             progress(f"WATERMARK COMMITTED: LSET={window['lset']} -> {window['cet']}, CET={window['cet']}")
@@ -152,9 +179,17 @@ def check_results(transform_result, *, connect, progress=print):
                      "source records rejected. DWH reconciliation passed; LSET/CET unchanged.")
         else:
             progress('PIPELINE SUCCESS: staging, dbt models/tests and DWH reconciliation passed.')
+        try:
+            from .ai_explainer import run_all_ai_modules
+            run_all_ai_modules()
+        except Exception as _ai_err:
+            progress(f'AI Explainer note: {_ai_err}')
         return report
     except Exception as exc:
-        prefix = failure(connection, 'steam_dwh_check', exc, progress)
+        prefix = failure(connection, 'steam_dwh_check', exc, progress, step='check',
+                         context=context, started_at=started_at,
+                         metrics=check_metrics(report) if report else None,
+                         checks_failed=len(report['failed_checks']) if report else None)
         raise RuntimeError(prefix + f'DWH check failed: {exc}') from exc
     finally:
         connection.close()
