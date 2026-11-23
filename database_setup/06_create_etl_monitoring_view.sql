@@ -120,3 +120,22 @@ SELECT
     ai_explanation
 FROM run_summary;
 GO
+
+-- 3. VIEW ĐỒNG BỘ CHO POWER BI TRANG 6 (DASHBOARD AI INSIGHTS)
+IF OBJECT_ID('dbo.dashboard_ai_insights', 'U') IS NOT NULL
+BEGIN
+    EXEC('
+    CREATE OR ALTER VIEW dbo.vw_dashboard_ai_insights AS
+    SELECT 
+        insight_id,
+        dashboard_page,
+        insight_topic,
+        metrics_snapshot,
+        ai_summary,
+        actionable_recommendations,
+        generated_at,
+        generated_at AS created_at
+    FROM dbo.dashboard_ai_insights
+    ');
+END;
+GO
