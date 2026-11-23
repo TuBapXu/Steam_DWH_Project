@@ -844,6 +844,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         return html;
     }
 
+    let msgSeq = 0;
+
     async function sendMsg() {
         const input = document.getElementById('userInput');
         const text = input.value.trim();
@@ -852,7 +854,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         appendMsg('user', text);
         input.value = '';
 
-        const loadingId = appendMsg('ai', '⏳ Đang phân tích số liệu DWH và phản hồi...');
+        const aiMsg = appendMsg('ai', '⏳ Đang phân tích số liệu DWH và phản hồi...');
 
         try {
             const res = await fetch('/api/chat', {
@@ -861,10 +863,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 body: JSON.stringify({ question: text })
             });
             const data = await res.json();
-            const bubble = document.getElementById(loadingId);
-            bubble.innerHTML = formatMarkdown(data.answer);
+            aiMsg.bubble.innerHTML = formatMarkdown(data.answer);
+            const body = document.getElementById('chatBody');
+            body.scrollTop = body.scrollHeight;
         } catch (err) {
-            document.getElementById(loadingId).innerText = "❌ Lỗi kết nối đến máy chủ AI Copilot.";
+            aiMsg.bubble.innerText = "❌ Lỗi kết nối đến máy chủ AI Copilot.";
         }
     }
 
@@ -877,7 +880,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         const body = document.getElementById('chatBody');
         const msgDiv = document.createElement('div');
         msgDiv.className = 'msg msg-' + sender;
-        const msgId = 'msg-' + Date.now();
+        msgSeq++;
+        const msgId = 'msg-' + sender + '-' + Date.now() + '-' + msgSeq;
 
         const avatar = document.createElement('div');
         avatar.className = 'avatar avatar-' + sender;
@@ -892,7 +896,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         msgDiv.appendChild(bubble);
         body.appendChild(msgDiv);
         body.scrollTop = body.scrollHeight;
-        return msgId;
+        return { id: msgId, bubble: bubble };
     }
 </script>
 
