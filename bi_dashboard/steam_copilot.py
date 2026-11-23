@@ -18,6 +18,7 @@ import requests
 PORT = 5000
 
 ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+ENV_EXAMPLE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env.example')
 _WORKING_CONN_STR = None
 _CACHED_CONTEXT = None
 
@@ -31,9 +32,10 @@ def get_db_conn():
             _WORKING_CONN_STR = None
 
     pwd = os.environ.get("MSSQL_PASSWORD", "")
-    if not pwd and os.path.exists(ENV_PATH):
+    target_env = ENV_PATH if os.path.exists(ENV_PATH) else (ENV_EXAMPLE_PATH if os.path.exists(ENV_EXAMPLE_PATH) else None)
+    if not pwd and target_env:
         try:
-            with open(ENV_PATH, 'r', encoding='utf-8') as f:
+            with open(target_env, 'r', encoding='utf-8') as f:
                 for line in f:
                     if line.startswith("MSSQL_PASSWORD="):
                         pwd = line.strip().split("=", 1)[1].strip("\"' ")
@@ -64,13 +66,14 @@ def get_db_conn():
     return None
 
 def load_api_config():
-    """Đọc cấu hình API từ environment hoặc file .env"""
+    """Đọc cấu hình API từ environment, file .env hoặc .env.example"""
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
     openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
 
-    if os.path.exists(ENV_PATH):
+    target_env = ENV_PATH if os.path.exists(ENV_PATH) else (ENV_EXAMPLE_PATH if os.path.exists(ENV_EXAMPLE_PATH) else None)
+    if target_env:
         try:
-            with open(ENV_PATH, 'r', encoding='utf-8') as f:
+            with open(target_env, 'r', encoding='utf-8') as f:
                 for line in f:
                     line = line.strip()
                     if line.startswith("GEMINI_API_KEY="):
@@ -85,7 +88,7 @@ def load_api_config():
             pass
 
     if gemini_key:
-        return {"provider": "gemini", "key": gemini_key, "model": "gemini-3.5-flash"}
+        return {"provider": "gemini", "key": gemini_key, "model": "gemini-2.5-flash"}
     elif openai_key:
         return {"provider": "openai", "key": openai_key, "model": "gpt-4o-mini"}
     else:
@@ -237,7 +240,7 @@ def get_etl_monitoring_data():
 
 def call_gemini_llm(api_key: str, prompt: str) -> str:
     """Gọi Google Gemini API (ưu tiên flash-lite phản hồi cực nhanh ~2s, ghép parts đầy đủ)"""
-    models = ["gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
+    models = ["gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"]
     last_err = ""
     for m in models:
         try:
@@ -844,6 +847,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         return html;
     }
 
+    let msgSeq = 0;
+
     async function sendMsg() {
         const input = document.getElementById('userInput');
         const text = input.value.trim();
@@ -852,7 +857,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         appendMsg('user', text);
         input.value = '';
 
-        const loadingId = appendMsg('ai', '⏳ Đang phân tích số liệu DWH và phản hồi...');
+        const aiMsg = appendMsg('ai', '⏳ Đang phân tích số liệu DWH và phản hồi...');
 
         try {
             const res = await fetch('/api/chat', {
@@ -861,10 +866,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 body: JSON.stringify({ question: text })
             });
             const data = await res.json();
-            const bubble = document.getElementById(loadingId);
-            bubble.innerHTML = formatMarkdown(data.answer);
+            aiMsg.bubble.innerHTML = formatMarkdown(data.answer);
+            const body = document.getElementById('chatBody');
+            body.scrollTop = body.scrollHeight;
         } catch (err) {
-            document.getElementById(loadingId).innerText = "❌ Lỗi kết nối đến máy chủ AI Copilot.";
+            aiMsg.bubble.innerText = "❌ Lỗi kết nối đến máy chủ AI Copilot.";
         }
     }
 
@@ -877,7 +883,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         const body = document.getElementById('chatBody');
         const msgDiv = document.createElement('div');
         msgDiv.className = 'msg msg-' + sender;
-        const msgId = 'msg-' + Date.now();
+        msgSeq++;
+        const msgId = 'msg-' + sender + '-' + Date.now() + '-' + msgSeq;
 
         const avatar = document.createElement('div');
         avatar.className = 'avatar avatar-' + sender;
@@ -892,7 +899,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         msgDiv.appendChild(bubble);
         body.appendChild(msgDiv);
         body.scrollTop = body.scrollHeight;
-        return msgId;
+        return { id: msgId, bubble: bubble };
     }
 </script>
 
