@@ -1,7 +1,8 @@
 # HƯỚNG DẪN KỸ THUẬT VẬN HÀNH TOÀN DIỆN HỆ THỐNG
 # STEAM GAMES DATA WAREHOUSE & BUSINESS INTELLIGENCE PLATFORM
 **Môn học:** Hệ thống thông tin phục vụ trí tuệ kinh doanh (23_1) — Nhóm 9  
-**Ngày cập nhật:** 23/11/2026 — Phiên bản: 2.0 (Hệ thống Pipeline 8 Block, Star Schema mở rộng, 6 Dashboards & AI Copilot)
+**Ngày cập nhật:** 23/11/2026 — Phiên bản: 2.0 (Hệ thống Pipeline 8 Block, Star Schema mở rộng, 6 Dashboards & AI Copilot)  
+> 📺 **Video Demo Báo cáo & Vận hành Hệ thống:** [https://youtu.be/C52hQv3U5y0](https://youtu.be/C52hQv3U5y0)
 
 ---
 
