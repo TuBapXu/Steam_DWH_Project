@@ -229,6 +229,7 @@ def build_tech_guide_pdf(filename):
     # BẢNG THÔNG TIN
     meta_data = [
         [Paragraph('<b>Mục đích tài liệu:</b>', style_meta), Paragraph('Cung cấp quy trình chi tiết từng bước để cài đặt, khởi động, nạp dữ liệu, kiểm thử chất lượng và tương tác trên toàn bộ hệ thống đồ án Kho dữ liệu Steam.', style_meta)],
+        [Paragraph('<b>Video Demo dự án:</b>', style_meta), Paragraph('<font color="#0369A1"><u>https://youtu.be/C52hQv3U5y0</u></font> (Trực quan hóa quy trình vận hành pipeline, 6 Dashboards và Steam Copilot AI)', style_meta)],
         [Paragraph('<b>Công nghệ cốt lõi:</b>', style_meta), Paragraph('Docker Compose, Mage.ai (EL), Microsoft SQL Server 2022 (DWH), dbt-sqlserver (Transform), Microsoft Power BI Desktop (Semantic & Dashboards), Google Gemini AI (Copilot).', style_meta)],
         [Paragraph('<b>Nhóm thực hiện:</b>', style_meta), Paragraph('<b>Nhóm 9</b>: Phạm Lê Thanh Tú (Nhóm trưởng) — 23120388 | Nguyễn Ngọc Bình — 23120218 | Kiều Đỗ Song Tinh — 23120373', style_meta)]
     ]
