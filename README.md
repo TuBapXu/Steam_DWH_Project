@@ -1,5 +1,7 @@
 # Steam Games Data Warehouse & BI Semantic Model
 
+> 📺 **Video Demo Báo cáo & Vận hành Hệ thống:** [https://youtu.be/C52hQv3U5y0](https://youtu.be/C52hQv3U5y0)
+
 Đồ án Data Warehouse trên tập dữ liệu **Steam Games**. Dự án xây dựng pipeline dữ liệu hoàn chỉnh từ file CSV tĩnh vào SQL Server thông qua Mage.ai, chuyển đổi và mô hình hóa Star Schema bằng dbt, và khởi tạo Semantic Model / DAX nền tảng trên Power BI:
 
 | Giai đoạn | Công cụ | Trạng thái |
@@ -174,9 +176,10 @@ Từ thư mục gốc project, sao chép file mẫu thành `.env`:
 ```powershell
 Copy-Item .env.example .env
 ```
-Mở file `.env` và cập nhật mật khẩu SQL Server (tránh dùng ký tự `#`):
+> **Lưu ý tiện ích:** File `.env.example` đã được nhóm điền sẵn toàn bộ cấu hình chuẩn cùng **Gemini API Key** hợp lệ (`AQ.Ab8RN6L_oYEtcnUgYcBlHLWChmcXu6QiusQAfUHxZ_nQwEMa7Q`). Người chấm chỉ cần sao chép sang `.env` là có thể chạy ngay toàn bộ hệ thống (Mage ETL, SQL Server và Steam Copilot AI) mà không cần cấu hình thêm:
 ```dotenv
-MSSQL_PASSWORD=YourStrongPasswordHere
+MSSQL_PASSWORD=thanhtu185B#2005
+GEMINI_API_KEY="AQ.Ab8RN6L_oYEtcnUgYcBlHLWChmcXu6QiusQAfUHxZ_nQwEMa7Q"
 ```
 
 ### 4. Khởi động hệ thống
@@ -340,6 +343,10 @@ Dự án đã hoàn thiện 6 trang báo cáo chuyên sâu phục vụ đa góc 
 - **AI ETL Explainer (`bi_dashboard/ai_etl_explainer.py`):**
   - Tự động kích hoạt sau khi chạy pipeline để phân tích log `dbo.etl_audit_log` và kết quả kiểm định dbt.
   - Tự động diễn giải nguyên nhân lỗi, đánh giá độ ổn định và ghi nhận định vào `dbo.dashboard_ai_insights` để Power BI hiển thị.
+
+### 📺 Video Demo & Báo cáo Trực quan Hệ thống
+Toàn bộ quy trình vận hành pipeline (8 blocks Mage, dbt build, 91 data tests), tương tác 6 Dashboard Power BI và trải nghiệm hỏi đáp với trợ lý ảo Steam Copilot được trình chiếu chi tiết tại:  
+👉 **Xem Video Demo trên YouTube:** [https://youtu.be/C52hQv3U5y0](https://youtu.be/C52hQv3U5y0)
 
 ---
 
