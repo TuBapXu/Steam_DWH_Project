@@ -174,9 +174,10 @@ Từ thư mục gốc project, sao chép file mẫu thành `.env`:
 ```powershell
 Copy-Item .env.example .env
 ```
-Mở file `.env` và cập nhật mật khẩu SQL Server (tránh dùng ký tự `#`):
+> **Lưu ý tiện ích:** File `.env.example` đã được nhóm điền sẵn toàn bộ cấu hình chuẩn cùng **Gemini API Key** hợp lệ (`AQ.Ab8RN6L_oYEtcnUgYcBlHLWChmcXu6QiusQAfUHxZ_nQwEMa7Q`). Người chấm chỉ cần sao chép sang `.env` là có thể chạy ngay toàn bộ hệ thống (Mage ETL, SQL Server và Steam Copilot AI) mà không cần cấu hình thêm:
 ```dotenv
-MSSQL_PASSWORD=YourStrongPasswordHere
+MSSQL_PASSWORD=thanhtu185B#2005
+GEMINI_API_KEY="AQ.Ab8RN6L_oYEtcnUgYcBlHLWChmcXu6QiusQAfUHxZ_nQwEMa7Q"
 ```
 
 ### 4. Khởi động hệ thống
