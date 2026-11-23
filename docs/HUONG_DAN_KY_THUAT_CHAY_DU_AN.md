@@ -78,22 +78,25 @@ Từ thư mục gốc của đồ án (`Steam_DWH_Project`), sao chép tệp m�
 ```powershell
 Copy-Item .env.example .env
 ```
-Mở tệp `.env` bằng trình soạn thảo bất kỳ và điền các thông tin:
+> **Lưu ý tiện ích:** Tệp `.env.example` đã được nhóm điền sẵn toàn bộ cấu hình chuẩn, gồm mật khẩu SQL Server và **Gemini API Key** của nhóm (`AQ.Ab8RN6L_oYEtcnUgYcBlHLWChmcXu6QiusQAfUHxZ_nQwEMa7Q`). Thầy/Cô và người chấm chỉ cần sao chép sang `.env` là có thể chạy ngay toàn bộ hệ thống (Mage ETL, SQL Server và Steam Copilot AI) mà không cần cấu hình thêm.
+
+Nội dung tệp `.env` chuẩn như sau:
 ```dotenv
-# Mật khẩu quản trị sa của SQL Server (Khuyến cáo: Chứa chữ hoa, chữ thường, số, tránh ký tự #)
-MSSQL_PASSWORD=YourStrongPasswordHere
+# Mật khẩu quản trị sa của SQL Server
+MSSQL_PASSWORD=thanhtu185B#2005
 
 # Cổng truy cập Mage UI từ máy Host (Mặc định: 6790)
 STEAM_MAGE_PORT=6790
 
-# API Key cho Trợ lý ảo AI Copilot (Google Gemini hoặc OpenAI)
-GEMINI_API_KEY=your_gemini_api_key_here
+# API Key cho Trợ lý ảo AI Copilot (Google Gemini 2.5 Flash)
+GEMINI_API_KEY="AQ.Ab8RN6L_oYEtcnUgYcBlHLWChmcXu6QiusQAfUHxZ_nQwEMa7Q"
 OPENAI_API_KEY=
 ```
 
 ### Bước 3.2: Chuẩn bị tệp dữ liệu nguồn `games.csv`
-1. Đặt tệp `games.csv` tải từ Kaggle vào thư mục `data/games.csv`.
-2. Kiểm tra mã băm SHA-256 để đảm bảo tính toàn vẹn (tránh file bị hỏng khi tải):
+1. Tải tập dữ liệu từ Kaggle: **[Steam Games Dataset trên Kaggle](https://www.kaggle.com/datasets/fronkongames/steam-games-dataset)** (hoặc đường dẫn trực tiếp: `https://www.kaggle.com/datasets/fronkongames/steam-games-dataset`).
+2. Giải nén và đặt tệp `games.csv` vào thư mục `data/games.csv`.
+3. Kiểm tra mã băm SHA-256 để đảm bảo tính toàn vẹn (tránh file bị hỏng khi tải):
 ```powershell
 Get-FileHash data/games.csv -Algorithm SHA256
 ```

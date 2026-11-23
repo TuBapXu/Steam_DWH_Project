@@ -286,16 +286,24 @@ def build_tech_guide_pdf(filename):
     story.append(Paragraph('<b>Bước 3.1: Tạo file cấu hình `.env`</b>', style_h2))
     story.append(Paragraph('Tại thư mục gốc dự án, sao chép tệp `.env.example` thành `.env`:', style_body))
     story.append(make_code_table('Copy-Item .env.example .env'))
-    story.append(Paragraph('Mở tệp `.env` và cập nhật mật khẩu SQL Server cùng API Key của Gemini AI:', style_body))
+    story.append(Paragraph(
+        '<i>Lưu ý:</i> Tệp <font face="Consolas">.env.example</font> đã điền sẵn mật khẩu SQL Server và '
+        '<b>Gemini API Key</b> của nhóm để Thầy/Cô và người chấm có thể chạy ngay toàn bộ hệ thống '
+        '(Mage ETL, SQL Server, Steam Copilot AI):',
+        style_body
+    ))
     story.append(make_code_table(
-        'MSSQL_PASSWORD=YourStrongPasswordHere\n'
+        'MSSQL_PASSWORD=thanhtu185B#2005\n'
         'STEAM_MAGE_PORT=6790\n'
-        'GEMINI_API_KEY=your_gemini_api_key_here'
+        'GEMINI_API_KEY="AQ.Ab8RN6L_oYEtcnUgYcBlHLWChmcXu6QiusQAfUHxZ_nQwEMa7Q"'
     ))
 
     story.append(Paragraph('<b>Bước 3.2: Đặt file dữ liệu `games.csv`</b>', style_h2))
     story.append(Paragraph(
-        'Đặt file `games.csv` tải từ Kaggle vào thư mục `data/games.csv`. Kiểm tra mã băm SHA-256 bằng PowerShell:',
+        'Tải tập dữ liệu từ Kaggle tại đường dẫn: '
+        '<font color="#0369A1"><u>https://www.kaggle.com/datasets/fronkongames/steam-games-dataset</u></font>.<br/>'
+        'Giải nén và đặt tệp <font face="Consolas">games.csv</font> vào thư mục <font face="Consolas">data/games.csv</font>. '
+        'Kiểm tra mã băm SHA-256 bằng PowerShell:',
         style_body
     ))
     story.append(make_code_table('Get-FileHash data/games.csv -Algorithm SHA256'))
