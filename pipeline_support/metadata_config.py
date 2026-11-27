@@ -394,28 +394,8 @@ def build_dbt_vars(rules, kpis):
 
 
 def compute_config_hash(rules, kpis):
-    """Deterministic SHA-256 hash of active rules + KPI definitions for recompute detection."""
-    payload = {
-        'rules': [
-            {
-                'code': r['rule_code'],
-                'col': r['target_column'],
-                'type': r['rule_type'],
-                'params': r.get('params_json'),
-                'action': r['on_fail_action'],
-                'active': bool(r['is_active']),
-            }
-            for r in sorted(rules or [], key=lambda x: x['rule_code'])
-        ],
-        'kpis': {
-            k: {
-                'val': v.get('kpi_value'),
-                'params': v.get('params_json'),
-                'mode': v.get('formula_mode'),
-            }
-            for k, v in sorted((kpis or {}).items())
-        },
-    }
+    """Deterministic SHA-256 hash of dbt-affecting rule/KPI vars for recompute detection."""
+    payload = build_dbt_vars(rules, kpis)
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode('utf-8')).hexdigest()
 
 
