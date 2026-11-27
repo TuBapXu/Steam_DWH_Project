@@ -238,6 +238,103 @@ def get_etl_monitoring_data():
         print(f"Lỗi lấy dữ liệu ETL: {e}", flush=True)
         return {"summary": {}, "runs": []}
 
+
+def get_metadata_config():
+    """Lấy danh sách Validation Rules, KPI Definitions và các dòng Rejected gần nhất."""
+    conn = get_db_conn()
+    if not conn:
+        return {"rules": [], "kpis": [], "rejected": [], "db_connected": False}
+    try:
+        cur = conn.cursor()
+        rules, kpis, rejected = [], [], []
+        if cur.execute("SELECT OBJECT_ID('dbo.etl_validation_rules', 'U')").fetchone()[0]:
+            cur.execute("""
+                SELECT rule_id, rule_code, rule_name, target_column, rule_type,
+                       params_json, on_fail_action, CAST(is_active AS INT) AS is_active,
+                       sort_order, description
+                FROM dbo.etl_validation_rules WITH (NOLOCK)
+                ORDER BY sort_order, rule_id
+            """)
+            cols = [c[0] for c in cur.description]
+            rules = [dict(zip(cols, r)) for r in cur.fetchall()]
+        if cur.execute("SELECT OBJECT_ID('dbo.etl_kpi_definitions', 'U')").fetchone()[0]:
+            cur.execute("""
+                SELECT kpi_code, kpi_name, target_model, formula_mode,
+                       kpi_value, params_json, description, version_no
+                FROM dbo.etl_kpi_definitions WITH (NOLOCK)
+                ORDER BY kpi_code
+            """)
+            cols = [c[0] for c in cur.description]
+            kpis = [dict(zip(cols, r)) for r in cur.fetchall()]
+        if cur.execute("SELECT OBJECT_ID('dbo.stg_steam_games_rejected', 'U')").fetchone()[0]:
+            cur.execute("""
+                SELECT TOP 20 run_id, source_file, source_record_no, line_start,
+                       rejected_stage, reason_code, reason_detail, raw_appid,
+                       CONVERT(VARCHAR(19), rejected_at, 120) AS rejected_at
+                FROM dbo.stg_steam_games_rejected WITH (NOLOCK)
+                ORDER BY rejected_at DESC, source_record_no ASC
+            """)
+            cols = [c[0] for c in cur.description]
+            rejected = [dict(zip(cols, r)) for r in cur.fetchall()]
+        conn.close()
+        return {"rules": rules, "kpis": kpis, "rejected": rejected, "db_connected": True}
+    except Exception as e:
+        print(f"Lỗi đọc metadata config: {e}", flush=True)
+        return {"rules": [], "kpis": [], "rejected": [], "db_connected": False, "error": str(e)}
+
+
+def update_rule_metadata(payload):
+    conn = get_db_conn()
+    if not conn:
+        raise RuntimeError("Không kết nối được SQL Server")
+    try:
+        cur = conn.cursor()
+        action = payload.get("action", "toggle")
+        if action == "add":
+            cur.execute("""
+                INSERT INTO dbo.etl_validation_rules
+                    (rule_code, rule_name, target_column, rule_type, params_json, on_fail_action, is_active, sort_order, description)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                payload["rule_code"].strip().upper(),
+                payload["rule_name"].strip(),
+                payload["target_column"].strip(),
+                payload["rule_type"].strip().upper(),
+                payload.get("params_json") or None,
+                payload.get("on_fail_action", "REJECT_ROW").strip().upper(),
+                1 if payload.get("is_active", True) else 0,
+                int(payload.get("sort_order", 100)),
+                payload.get("description") or None,
+            )
+        else:
+            cur.execute("""
+                UPDATE dbo.etl_validation_rules
+                SET is_active = ?, updated_at = SYSUTCDATETIME()
+                WHERE rule_code = ?
+            """, 1 if payload.get("is_active") else 0, payload["rule_code"])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_kpi_metadata(payload):
+    conn = get_db_conn()
+    if not conn:
+        raise RuntimeError("Không kết nối được SQL Server")
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE dbo.etl_kpi_definitions
+            SET kpi_value = ?,
+                params_json = ?,
+                version_no = version_no + 1,
+                updated_at = SYSUTCDATETIME()
+            WHERE kpi_code = ?
+        """, str(payload["kpi_value"]), payload.get("params_json") or None, payload["kpi_code"])
+        conn.commit()
+    finally:
+        conn.close()
+
 def call_gemini_llm(api_key: str, prompt: str) -> str:
     """Gọi Google Gemini API (ưu tiên flash-lite phản hồi cực nhanh ~2s, ghép parts đầy đủ)"""
     models = ["gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"]
@@ -555,6 +652,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <div class="nav-tabs">
             <button class="nav-tab active" onclick="switchTab('chat')">💬 Trợ Lý AI Copilot</button>
             <button class="nav-tab" onclick="switchTab('etl')">📊 Giám Sát Đường Ống ETL</button>
+            <button class="nav-tab" onclick="switchTab('metadata')">⚙️ Cấu Hình Rule &amp; KPI</button>
         </div>
     </header>
 
@@ -675,6 +773,90 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- TAB 3: METADATA RULES & KPI CONFIGURATION -->
+        <div id="tab-metadata" class="tab-content">
+            <div class="table-box">
+                <h3>🛡️ Bảng Rule Kiểm Tra Dữ Liệu Động (dbo.etl_validation_rules)
+                    <button class="chip" onclick="loadMetadataConfig()" style="float:right;">🔄 Tải lại</button>
+                </h3>
+                <p style="font-size:0.82rem; color:#8f98a0; margin-bottom:12px;">
+                    Bật/tắt hoặc thêm rule mới trực tiếp trong SQL Server mà không cần sửa code Python/dbt. Chạy lại Mage pipeline để áp dụng ngay.
+                </p>
+                <table class="audit-table">
+                    <thead>
+                        <tr>
+                            <th>Mã Rule</th>
+                            <th>Tên Rule</th>
+                            <th>Cột Mục Tiêu</th>
+                            <th>Loại &amp; Tham Số</th>
+                            <th>Hành Động Lỗi</th>
+                            <th>Trạng Thái</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rulesTableBody">
+                        <tr><td colspan="6" style="text-align:center; padding:16px;">Đang tải danh sách rule...</td></tr>
+                    </tbody>
+                </table>
+                <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                    <input id="newRuleCode" class="chat-input" style="max-width:170px; padding:7px 10px; font-size:0.82rem;" placeholder="Mã rule (vd MAX_PRICE_50)">
+                    <input id="newRuleName" class="chat-input" style="max-width:190px; padding:7px 10px; font-size:0.82rem;" placeholder="Mô tả rule">
+                    <input id="newRuleCol" class="chat-input" style="max-width:120px; padding:7px 10px; font-size:0.82rem;" placeholder="Cột (vd Price)">
+                    <select id="newRuleType" class="chat-input" style="max-width:120px; padding:7px 10px; font-size:0.82rem;">
+                        <option value="MIN_VALUE">MIN_VALUE</option>
+                        <option value="MAX_VALUE">MAX_VALUE</option>
+                        <option value="RANGE">RANGE</option>
+                        <option value="REQUIRED">REQUIRED</option>
+                        <option value="DATE">DATE</option>
+                    </select>
+                    <input id="newRuleParams" class="chat-input" style="max-width:160px; padding:7px 10px; font-size:0.82rem;" placeholder='{"max": 50}'>
+                    <button class="btn-send" style="padding:8px 14px; font-size:0.82rem;" onclick="addNewRule()">+ Thêm Rule</button>
+                </div>
+            </div>
+
+            <div class="table-box">
+                <h3>📐 Định Nghĩa Cách Tính KPI Động (dbo.etl_kpi_definitions)</h3>
+                <p style="font-size:0.82rem; color:#8f98a0; margin-bottom:12px;">
+                    Thay đổi ngưỡng hoặc công thức KPI và lưu vào SQL Server. Khi chạy lại pipeline (kể cả Incremental), hệ thống tự nhận diện config_hash mới và tái tính lại DWH.
+                </p>
+                <table class="audit-table">
+                    <thead>
+                        <tr>
+                            <th>Mã KPI</th>
+                            <th>Mô Tả</th>
+                            <th>Model Đích</th>
+                            <th>Giá Trị / Công Thức</th>
+                            <th>Tham Số JSON</th>
+                            <th>Version</th>
+                            <th>Lưu</th>
+                        </tr>
+                    </thead>
+                    <tbody id="kpiTableBody">
+                        <tr><td colspan="7" style="text-align:center; padding:16px;">Đang tải định nghĩa KPI...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-box">
+                <h3>🚫 Bản Ghi Bị Chặn Gần Nhất (dbo.stg_steam_games_rejected)</h3>
+                <table class="audit-table">
+                    <thead>
+                        <tr>
+                            <th>Thời Điểm</th>
+                            <th>File Nguồn</th>
+                            <th>Dòng</th>
+                            <th>Tầng</th>
+                            <th>Mã Lỗi (Rule Code)</th>
+                            <th>Chi Tiết</th>
+                            <th>AppID Thô</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rejectedTableBody">
+                        <tr><td colspan="7" style="text-align:center; padding:16px;">Chưa có bản ghi bị chặn.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
     </div>
 
 <script>
@@ -688,14 +870,119 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         if (tab === 'chat') {
             document.querySelectorAll('.nav-tab')[0].classList.add('active');
             document.getElementById('tab-chat').classList.add('active');
-        } else {
+        } else if (tab === 'etl') {
             document.querySelectorAll('.nav-tab')[1].classList.add('active');
             document.getElementById('tab-etl').classList.add('active');
             if (!etlLoaded) {
                 loadEtlMonitoring();
                 etlLoaded = true;
             }
+        } else {
+            document.querySelectorAll('.nav-tab')[2].classList.add('active');
+            document.getElementById('tab-metadata').classList.add('active');
+            loadMetadataConfig();
         }
+    }
+
+    async function loadMetadataConfig() {
+        try {
+            const res = await fetch('/api/metadata');
+            const data = await res.json();
+
+            const rulesBody = document.getElementById('rulesTableBody');
+            rulesBody.innerHTML = '';
+            (data.rules || []).forEach(r => {
+                const tr = document.createElement('tr');
+                const active = Boolean(r.is_active);
+                const btnLabel = active ? 'Đang BẬT (Tắt)' : 'Đang TẮT (Bật)';
+                const btnClass = active ? 'badge badge-success' : 'badge badge-danger';
+                tr.innerHTML = `
+                    <td><code>${r.rule_code}</code></td>
+                    <td>${r.rule_name}</td>
+                    <td><code>${r.target_column}</code></td>
+                    <td><span class="badge badge-mode">${r.rule_type}</span> <code>${r.params_json || '-'}</code></td>
+                    <td><code>${r.on_fail_action}</code></td>
+                    <td><button class="${btnClass}" style="cursor:pointer;" onclick="toggleRule('${r.rule_code}', ${!active})">${btnLabel}</button></td>
+                `;
+                rulesBody.appendChild(tr);
+            });
+
+            const kpiBody = document.getElementById('kpiTableBody');
+            kpiBody.innerHTML = '';
+            (data.kpis || []).forEach(k => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><code>${k.kpi_code}</code></td>
+                    <td>${k.kpi_name}</td>
+                    <td><code>${k.target_model}</code></td>
+                    <td><input id="kpi-val-${k.kpi_code}" class="chat-input" style="padding:5px 8px; font-size:0.8rem;" value="${k.kpi_value || ''}"></td>
+                    <td><input id="kpi-params-${k.kpi_code}" class="chat-input" style="padding:5px 8px; font-size:0.8rem;" value='${k.params_json || ''}'></td>
+                    <td>v${k.version_no}</td>
+                    <td><button class="btn-send" style="padding:5px 10px; font-size:0.8rem;" onclick="saveKpi('${k.kpi_code}')">Lưu</button></td>
+                `;
+                kpiBody.appendChild(tr);
+            });
+
+            const rejBody = document.getElementById('rejectedTableBody');
+            rejBody.innerHTML = '';
+            const rej = data.rejected || [];
+            if (!rej.length) {
+                rejBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:16px;">Chưa có bản ghi bị chặn.</td></tr>';
+            } else {
+                rej.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${item.rejected_at || ''}</td>
+                        <td><code>${item.source_file}</code></td>
+                        <td>${item.line_start}</td>
+                        <td><span class="badge badge-mode">${item.rejected_stage}</span></td>
+                        <td><span class="badge badge-danger">${item.reason_code}</span></td>
+                        <td>${item.reason_detail}</td>
+                        <td><code>${item.raw_appid || 'NULL'}</code></td>
+                    `;
+                    rejBody.appendChild(tr);
+                });
+            }
+        } catch (err) {
+            console.error('Lỗi tải metadata:', err);
+        }
+    }
+
+    async function toggleRule(ruleCode, nextState) {
+        await fetch('/api/metadata/rule', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'toggle', rule_code: ruleCode, is_active: nextState})
+        });
+        await loadMetadataConfig();
+    }
+
+    async function addNewRule() {
+        const rule_code = document.getElementById('newRuleCode').value.trim();
+        const rule_name = document.getElementById('newRuleName').value.trim() || rule_code;
+        const target_column = document.getElementById('newRuleCol').value.trim();
+        const rule_type = document.getElementById('newRuleType').value;
+        const params_json = document.getElementById('newRuleParams').value.trim();
+        if (!rule_code || !target_column) { alert('Nhập mã rule và cột mục tiêu'); return; }
+        await fetch('/api/metadata/rule', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'add', rule_code, rule_name, target_column, rule_type, params_json, on_fail_action: 'REJECT_ROW', is_active: true})
+        });
+        document.getElementById('newRuleCode').value = '';
+        document.getElementById('newRuleName').value = '';
+        await loadMetadataConfig();
+    }
+
+    async function saveKpi(kpiCode) {
+        const kpi_value = document.getElementById('kpi-val-' + kpiCode).value.trim();
+        const params_json = document.getElementById('kpi-params-' + kpiCode).value.trim();
+        await fetch('/api/metadata/kpi', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({kpi_code: kpiCode, kpi_value, params_json})
+        });
+        await loadMetadataConfig();
     }
 
     async function loadEtlMonitoring() {
@@ -931,6 +1218,12 @@ class ChatHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
             self.wfile.write(json.dumps(data, ensure_ascii=False, default=str).encode('utf-8'))
+        elif self.path == '/api/metadata':
+            data = get_metadata_config()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(data, ensure_ascii=False, default=str).encode('utf-8'))
         else:
             self.send_response(404)
             self.end_headers()
@@ -950,6 +1243,34 @@ class ChatHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
             resp = json.dumps({"answer": answer}, ensure_ascii=False)
+            self.wfile.write(resp.encode('utf-8'))
+        elif self.path == '/api/metadata/rule':
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8')
+            try:
+                update_rule_metadata(json.loads(body))
+                resp = json.dumps({"status": "ok"}, ensure_ascii=False)
+                code = 200
+            except Exception as e:
+                resp = json.dumps({"status": "error", "error": str(e)}, ensure_ascii=False)
+                code = 500
+            self.send_response(code)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(resp.encode('utf-8'))
+        elif self.path == '/api/metadata/kpi':
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8')
+            try:
+                update_kpi_metadata(json.loads(body))
+                resp = json.dumps({"status": "ok"}, ensure_ascii=False)
+                code = 200
+            except Exception as e:
+                resp = json.dumps({"status": "error", "error": str(e)}, ensure_ascii=False)
+                code = 500
+            self.send_response(code)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
             self.wfile.write(resp.encode('utf-8'))
         else:
             self.send_response(404)

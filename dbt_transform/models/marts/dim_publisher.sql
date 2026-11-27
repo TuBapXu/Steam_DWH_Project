@@ -1,14 +1,18 @@
+{% set recompute = env_var('STEAM_RECOMPUTE_CONFIG', '') != '' %}
+{% set change_batch = env_var('STEAM_CHANGE_BATCH', '') != '' %}
+{% set aaa_min_games = var('kpi_publisher_aaa_min_games', 10) | int %}
 {{
     config(
-        materialized         = 'incremental',
-        schema               = 'dwh',
-        unique_key           = 'publisher_name',
-        incremental_strategy = 'delete+insert'
+        materialized          = 'incremental',
+        schema                = 'dwh',
+        unique_key            = 'publisher_name',
+        incremental_strategy  = 'merge' if (change_batch or recompute) else 'delete+insert',
+        merge_exclude_columns = ['publisher_key']
     )
 }}
 
 -- Chiều nhà phát hành: trích xuất publisher chính (đầu tiên trong chuỗi CSV)
--- publisher_tier: 'AAA' nếu publisher có >= 10 game, 'Indie' nếu < 10
+-- publisher_tier: 'AAA' nếu publisher có >= kpi_publisher_aaa_min_games game, 'Indie' nếu < ngưỡng
 -- unique_key = publisher_name: đảm bảo mỗi publisher chỉ có 1 dòng
 with
 -- Bước 1: Trích xuất publisher/developer đầu tiên từ chuỗi CSV
@@ -56,7 +60,7 @@ publisher_candidates as (
         pwd.publisher_name,
         pwd.developer_name,
         case
-            when pc.game_count >= 10 then 'AAA'
+            when pc.game_count >= {{ aaa_min_games }} then 'AAA'
             else 'Indie'
         end as publisher_tier
     from publisher_with_dev pwd
@@ -74,8 +78,12 @@ max_key as (
 ),
 source_to_load as (
     select p.*
+        {% if is_incremental() and (change_batch or recompute) %}, existing.publisher_key as existing_key{% endif %}
     from publisher_candidates p
-    {% if is_incremental() %}
+    {% if is_incremental() and (change_batch or recompute) %}
+    left join {{ this }} existing
+        on existing.publisher_name = p.publisher_name and existing.publisher_key <> 0
+    {% elif is_incremental() %}
     where not exists (
         select 1
         from {{ this }} existing
@@ -84,7 +92,13 @@ source_to_load as (
     {% endif %}
 )
 select
+    {% if is_incremental() and (change_batch or recompute) %}
+    coalesce(s.existing_key, cast(m.max_key + row_number() over (
+        order by case when s.existing_key is null then 0 else 1 end, s.publisher_name
+    ) as int)) as publisher_key,
+    {% else %}
     cast(m.max_key + row_number() over (order by s.publisher_name) as int) as publisher_key,
+    {% endif %}
     s.publisher_name,
     s.developer_name,
     s.publisher_tier

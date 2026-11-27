@@ -10,11 +10,12 @@
 -- Bảng Fact dạng Periodic Snapshot — trung tâm của Star Schema
 -- Grain: 1 dòng = 1 tựa game tại thời điểm nạp dữ liệu vào DWH
 -- Thứ tự load: 4 Dim phải có dữ liệu trước khi chạy model này (dbt tự sắp xếp qua ref())
+{% set recompute = env_var('STEAM_RECOMPUTE_CONFIG', '') != '' %}
 {% set apply_changes = env_var('STEAM_CHANGE_BATCH', '') and is_incremental() %}
 with
 cleaned as (
     select s.* from {{ ref('stg_steam_games_cleaned') }} s
-    {% if is_incremental() %}
+    {% if is_incremental() and not recompute %}
     left join {{ ref('dim_game') }} existing_game
         on existing_game.appid_nk = s.game_id
     left join {{ this }} existing_fact

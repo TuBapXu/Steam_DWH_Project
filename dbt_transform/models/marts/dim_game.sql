@@ -1,16 +1,17 @@
+{% set recompute = env_var('STEAM_RECOMPUTE_CONFIG', '') != '' %}
 {{
     config(
         materialized         = 'incremental',
         schema               = 'dwh',
         unique_key           = 'appid_nk',
-        incremental_strategy = 'merge' if env_var('STEAM_CHANGE_BATCH', '') else 'delete+insert',
+        incremental_strategy = 'merge' if (env_var('STEAM_CHANGE_BATCH', '') or recompute) else 'delete+insert',
         merge_exclude_columns = ['game_key']
     )
 }}
 
 -- Mỗi dòng là một tựa game duy nhất trên Steam.
 -- Cấp surrogate key mới sau khóa lớn nhất đang có để incremental không đánh lại từ 1.
-{% set apply_changes = env_var('STEAM_CHANGE_BATCH', '') and is_incremental() %}
+{% set apply_changes = (env_var('STEAM_CHANGE_BATCH', '') or recompute) and is_incremental() %}
 with cleaned as (
     select
         c.game_id,
@@ -20,7 +21,7 @@ with cleaned as (
         categories,
         supported_languages
     from {{ ref('stg_steam_games_cleaned') }} c
-    {% if apply_changes %}
+    {% if apply_changes and not recompute %}
     where {{ steam_changed_game('c.game_id') }}
     {% endif %}
 ),

@@ -7,6 +7,7 @@ import pandas as pd
 
 from .full_load import (SQL_COLUMNS, make_full_plan, make_incremental_plan,
                         prepare_chunk, read_chunks, validate_full_plan)
+from .metadata_config import evaluate_reject_rules, load_validation_rules
 from .sql_full_load import SqlFullLoadStore, identifier
 from .dwh_checks import staging_signature
 from .rejected import write_rejections
@@ -61,10 +62,18 @@ def prepare(root, *, connect=None, **options):
     # Carried through every block result so all audit rows of this run share it.
     plan['trigger_name'] = str(options.get('trigger_name') or 'manual')
     plan['started_at'] = utc_now().isoformat(timespec='seconds')
+    active_rules = load_validation_rules(connect) if connect is not None else None
+    if active_rules is not None:
+        plan['active_rules'] = active_rules
+        rules_digest = hashlib.sha256(json.dumps(active_rules, sort_keys=True).encode()).hexdigest()[:12]
+    else:
+        rules_digest = None
     partition = options.get('_execution_partition') or options.get('execution_partition')
     if partition:
-        identity = (str(partition), str(source), plan['source_size'], plan['source_mtime_ns'],
-                    mode, plan['chunk_size'])
+        identity = [str(partition), str(source), plan['source_size'], plan['source_mtime_ns'],
+                    mode, plan['chunk_size']]
+        if rules_digest is not None:
+            identity.append(rules_digest)
         plan['run_id'] = hashlib.sha256(json.dumps(identity).encode()).hexdigest()[:32]
     folder = root / 'output' / 'mage_chunks' / plan['run_id']
     folder.mkdir(parents=True, exist_ok=True)
@@ -85,14 +94,7 @@ def prepare(root, *, connect=None, **options):
             flush_rejected()
 
     def on_chunk_sources(index, frame, sources):
-        invalid = pd.to_numeric(frame['AppID'], errors='coerce').isna().to_numpy()
-        bad = []
-        for record, rejected_key in zip(sources, invalid, strict=True):
-            if rejected_key:
-                missing = not record['raw_appid'].strip()
-                bad.append(dict(record, chunk_id=index, rejected_stage='VALIDATE',
-                                reason_code='MISSING_APPID' if missing else 'INVALID_APPID',
-                                reason_detail='AppID is empty' if missing else 'AppID is not numeric'))
+        _, bad = evaluate_reject_rules(frame, plan.get('active_rules'), sources=sources, chunk_id=index)
         if bad:
             (folder / f'rejected_{index}.json').write_text(json.dumps(bad), encoding='utf-8')
 
@@ -134,11 +136,16 @@ def extract(chunk):
 def validate(frame, chunk, connect=None):
     frame = restore_csv_nulls(frame)
     plan = chunk['plan']
-    cleaned, counts = prepare_chunk(chunk['chunk_id'], frame, plan['loaded_at'], plan['run_mode'])
+    cleaned, counts = prepare_chunk(
+        chunk['chunk_id'], frame, plan['loaded_at'], plan['run_mode'],
+        rules=plan.get('active_rules'),
+    )
     if connect and chunk.get('rejected_path'):
         records = json.loads(Path(chunk['rejected_path']).read_text(encoding='utf-8'))
-        if len(records) != counts['bad_keys']:
-            raise RuntimeError('Rejected AppID count does not match source record positions')
+        unique_rejected = len({r['source_record_no'] for r in records})
+        expected_rejected = counts['bad_keys'] + counts.get('rule_rejected', 0)
+        if unique_rejected != expected_rejected:
+            raise RuntimeError('Rejected record count does not match source record positions')
         write_rejections(connect, plan['run_id'], chunk['source_file'], records)
     print(f'VALIDATE chunk statistics: {counts}', flush=True)
     return [cleaned, dict(chunk, counts=counts)]
@@ -186,8 +193,8 @@ def finalize(receipts, connect):
             or any(r['plan'] != plan or r['loaded_rows'] != r['counts']['cleaned_rows'] for r in receipts)):
         raise ValueError('Missing, duplicate, or mixed-run chunk outputs')
     validate_full_plan(plan)
-    totals = {key: sum(r['counts'][key] for r in receipts) for key in
-              ('rows_read', 'bad_keys', 'bad_dates', 'cleaned_rows', 'local_duplicates')}
+    totals = {key: sum(r['counts'].get(key, 0) for r in receipts) for key in
+              ('rows_read', 'bad_keys', 'rule_rejected', 'bad_dates', 'cleaned_rows', 'local_duplicates')}
     totals.update(manifest['diagnostics'])
     with SqlFullLoadStore(connect, plan['run_id'], run_mode=plan['run_mode']) as store:
         store.audit_context = dict(run_id=plan['run_id'], trigger_name=plan.get('trigger_name'),
@@ -230,7 +237,8 @@ def finalize(receipts, connect):
             accepted = store.count_winners()
             totals['cross_chunk_duplicates'] = totals['cleaned_rows'] - accepted
             totals['duplicates'] = totals['local_duplicates'] + totals['cross_chunk_duplicates']
-            if (totals['rows_read'] != totals['bad_keys'] + totals['duplicates'] + accepted
+            if (totals['rows_read'] != totals['bad_keys'] + totals.get('rule_rejected', 0)
+                    + totals['duplicates'] + accepted
                     or totals['source_records'] != totals['parser_rejected'] + totals['rows_read']):
                 raise RuntimeError('Whole-file reconciliation failed')
             if not accepted:

@@ -28,24 +28,26 @@ models:
               arguments: {values: [0, 1], quote: false}
       - name: price
         description: "Giữ NULL nếu thiếu hoặc âm; không suy diễn thành miễn phí."
-        data_tests: [valid_range]
+        data_tests:
+          - valid_range:
+              arguments: {rule_var: 'rule_price_non_negative'}
       - name: discount_percentage
         data_tests:
           - valid_range:
-              arguments: {min_value: 0, max_value: 100}
+              arguments: {min_value: 0, max_value: 100, rule_var: 'rule_discount_range'}
       - name: positive_reviews
         data_tests: [valid_range]
       - name: negative_reviews
         data_tests: [valid_range]
       - name: positive_review_ratio
-        description: "positive / (positive + negative); NULL khi tổng bằng 0 hoặc có số đếm không hợp lệ."
+        description: "Tỷ lệ đánh giá tích cực theo cấu hình KPI POSITIVE_RATIO_FORMULA."
         data_tests:
           - valid_range:
               arguments: {min_value: 0, max_value: 1}
       - name: metacritic_score
         data_tests:
           - valid_range:
-              arguments: {min_value: 1, max_value: 100}
+              arguments: {min_value: 1, max_value: 100, rule_var: 'rule_metacritic_range'}
       - name: user_score
         description: "Giữ nguyên thang điểm nguồn; giá trị <= 0 được xem là chưa có điểm."
         data_tests: [valid_range]
