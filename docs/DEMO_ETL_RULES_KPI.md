@@ -20,7 +20,7 @@ docker compose exec -T mage python /home/src/database_setup/bootstrap.py
 
 ## 4 Kịch bản Demo Incremental Load trên Mage (`steam_staging_pipeline`)
 
-Mở Mage UI (`http://localhost:6790`) -> `steam_staging_pipeline` -> Triggers -> Run once, giữ nguyên `run_mode: incremental`, `chunk_size: 1000`, `demo_lset: null`, `demo_cet: null`, chỉ thay đổi biến `source_file`:
+Mở Mage UI (`http://localhost:6790`) -> `steam_staging_pipeline` -> Triggers -> Run once, giữ nguyên `run_mode: incremental`, `chunk_size: 1000`, `demo_lset: null`, `demo_cet: null` (bật thêm `dbt_fast_demo: true` nếu muốn bỏ qua các test nặng `tag:demo_heavy` và chạy 4 luồng để demo nhanh hơn), chỉ thay đổi biến `source_file`:
 
 ### Case 1: Dữ liệu đúng (Incremental Insert -> Update -> Unchanged)
 1. **Lượt 1**: Đặt `source_file: tests/fixtures/demo/tc1_valid_incremental.csv` -> Run now.

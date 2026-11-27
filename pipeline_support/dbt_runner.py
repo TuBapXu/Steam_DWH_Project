@@ -33,7 +33,7 @@ def stop_process(process):
 
 
 def build_dbt(project_root, environment, *, executable=None, timeout_seconds=3600,
-              vars=None, full_refresh=False, progress=print):
+              vars=None, full_refresh=False, exclude=None, threads=1, progress=print):
     if isinstance(timeout_seconds, bool) or int(timeout_seconds) != float(timeout_seconds):
         raise ValueError('dbt_timeout_seconds must be a positive integer')
     timeout_seconds = int(timeout_seconds)
@@ -55,9 +55,11 @@ def build_dbt(project_root, environment, *, executable=None, timeout_seconds=360
     for key in ('DBT_SELECT', 'DBT_EXCLUDE', 'DBT_FULL_REFRESH'):
         env.pop(key, None)
     command = [str(executable), 'build', '--project-dir', str(project),
-               '--profiles-dir', str(project), '--target', 'dev', '--threads', '1']
+               '--profiles-dir', str(project), '--target', 'dev', '--threads', str(int(threads))]
     if full_refresh:
         command.append('--full-refresh')
+    if exclude:
+        command.extend(['--exclude', str(exclude)])
     if vars:
         command.extend(['--vars', json.dumps(vars)])
     tail = deque(maxlen=12)
