@@ -33,7 +33,7 @@ def stop_process(process):
 
 
 def build_dbt(project_root, environment, *, executable=None, timeout_seconds=3600,
-              progress=print):
+              vars=None, full_refresh=False, progress=print):
     if isinstance(timeout_seconds, bool) or int(timeout_seconds) != float(timeout_seconds):
         raise ValueError('dbt_timeout_seconds must be a positive integer')
     timeout_seconds = int(timeout_seconds)
@@ -56,6 +56,10 @@ def build_dbt(project_root, environment, *, executable=None, timeout_seconds=360
         env.pop(key, None)
     command = [str(executable), 'build', '--project-dir', str(project),
                '--profiles-dir', str(project), '--target', 'dev', '--threads', '1']
+    if full_refresh:
+        command.append('--full-refresh')
+    if vars:
+        command.extend(['--vars', json.dumps(vars)])
     tail = deque(maxlen=12)
     password = str(env.get('MSSQL_PASSWORD', ''))
 

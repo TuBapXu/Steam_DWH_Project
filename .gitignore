@@ -10,6 +10,7 @@ data/*
 !tests/fixtures/games_incremental_v1.csv
 !tests/fixtures/games_incremental_v2.csv
 !tests/fixtures/games_incremental_v3.csv
+!tests/fixtures/demo/*.csv
 *.parquet
 
 # Mage.ai runtime & cache

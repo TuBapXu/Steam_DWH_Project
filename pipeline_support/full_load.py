@@ -171,15 +171,34 @@ def read_chunks(plan,diagnostics=None, *, progress=None, on_rejected=None, on_ch
             yield chunk_id,frame
 
 
-def prepare_chunk(chunk_id,frame,loaded_at,run_mode='full'):
+def prepare_chunk(chunk_id,frame,loaded_at,run_mode='full', *, rules=None):
+    if rules is None:
+        keys=pd.to_numeric(frame['AppID'],errors='coerce')
+        stats=dict(chunk_id=chunk_id,rows_read=len(frame),bad_keys=int(keys.isna().sum()),
+                   bad_dates=int(frame['Release date'].isna().sum()))
+        cleaned=clean_frame(frame,run_mode=run_mode)
+        if not cleaned.empty:
+            cleaned['_loaded_at']=pd.Timestamp(loaded_at)
+        stats['cleaned_rows']=len(cleaned)
+        stats['local_duplicates']=stats['rows_read']-stats['bad_keys']-len(cleaned)
+        return cleaned,stats
+
+    from .metadata_config import apply_nullify_rules, evaluate_reject_rules
     keys=pd.to_numeric(frame['AppID'],errors='coerce')
-    stats=dict(chunk_id=chunk_id,rows_read=len(frame),bad_keys=int(keys.isna().sum()),
+    bad_key_mask=keys.isna()
+    rejected_mask,_=evaluate_reject_rules(frame,rules)
+    bad_keys=int((rejected_mask & bad_key_mask).sum())
+    rule_rejected=int((rejected_mask & ~bad_key_mask).sum())
+    surviving=frame[~rejected_mask].copy()
+    stats=dict(chunk_id=chunk_id,rows_read=len(frame),bad_keys=bad_keys,
+               rule_rejected=rule_rejected,
                bad_dates=int(frame['Release date'].isna().sum()))
-    cleaned=clean_frame(frame,run_mode=run_mode)
+    cleaned=clean_frame(surviving,run_mode=run_mode)
     if not cleaned.empty:
+        cleaned=apply_nullify_rules(cleaned,rules)
         cleaned['_loaded_at']=pd.Timestamp(loaded_at)
     stats['cleaned_rows']=len(cleaned)
-    stats['local_duplicates']=stats['rows_read']-stats['bad_keys']-len(cleaned)
+    stats['local_duplicates']=stats['rows_read']-bad_keys-rule_rejected-len(cleaned)
     return cleaned,stats
 
 

@@ -34,6 +34,16 @@ IF COL_LENGTH('dbo.etl_audit_log', 'checks_failed') IS NULL
     ALTER TABLE dbo.etl_audit_log ADD checks_failed int NULL;
 IF COL_LENGTH('dbo.etl_audit_log', 'metrics_json') IS NULL
     ALTER TABLE dbo.etl_audit_log ADD metrics_json nvarchar(max) NULL;
+IF COL_LENGTH('dbo.etl_audit_log', 'end_time') IS NULL
+    ALTER TABLE dbo.etl_audit_log ADD end_time datetime2 NULL;
+IF COL_LENGTH('dbo.etl_audit_log', 'duration_seconds') IS NULL
+    ALTER TABLE dbo.etl_audit_log ADD duration_seconds int NULL;
+IF COL_LENGTH('dbo.etl_audit_log', 'dbt_tests_passed') IS NULL
+    ALTER TABLE dbo.etl_audit_log ADD dbt_tests_passed int NULL;
+IF COL_LENGTH('dbo.etl_audit_log', 'dbt_tests_failed') IS NULL
+    ALTER TABLE dbo.etl_audit_log ADD dbt_tests_failed int NULL;
+IF COL_LENGTH('dbo.etl_audit_log', 'ai_explanation') IS NULL
+    ALTER TABLE dbo.etl_audit_log ADD ai_explanation nvarchar(max) NULL;
 GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes

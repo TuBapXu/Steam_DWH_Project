@@ -6,6 +6,16 @@ from pathlib import Path
 from .audit import run_context, utc_now, write_audit
 from .dbt_runner import build_dbt
 from .dwh_checks import inspect_dwh, staging_signature
+from .metadata_config import (
+    DEFAULT_KPI_DEFINITIONS,
+    DEFAULT_VALIDATION_RULES,
+    build_dbt_vars,
+    compute_config_hash,
+    get_applied_config_hash,
+    load_kpi_definitions,
+    load_validation_rules,
+    set_applied_config_hash,
+)
 from .sql_full_load import acquire_staging_lock, batch_window, require_pending_batch
 
 AUDITED = '[DWH_STEP_AUDITED] '
@@ -97,27 +107,46 @@ def run_transform(staging_result, *, project_root, connect, environment,
             raise RuntimeError('Staging is empty; dbt was not started')
         if staging_result.get('_full_load_result') and int(before[0]) != staging_result['records_processed']:
             raise RuntimeError('Staging count changed after Full Load; rerun from extract')
-        if staging_result.get('outcome') == 'NO_VALID_RECORDS':
+        rules = load_validation_rules(connection)
+        kpis = load_kpi_definitions(connection)
+        dbt_vars = build_dbt_vars(rules, kpis)
+        config_hash = compute_config_hash(rules, kpis)
+        applied_hash = get_applied_config_hash(connection)
+        baseline_hash = compute_config_hash(DEFAULT_VALIDATION_RULES, DEFAULT_KPI_DEFINITIONS)
+        recompute_config = (
+            (applied_hash != config_hash) if applied_hash is not None
+            else (config_hash != baseline_hash)
+        )
+        if staging_result.get('outcome') == 'NO_VALID_RECORDS' and not recompute_config:
             progress('DBT SKIPPED: no valid incremental records.')
             audit(connection, 'steam_dbt_transform', 'SUCCESS', 0, step='dbt', context=context,
                   started_at=started_at, dbt_tests=0,
                   metrics=dict(dbt='SKIPPED', reason='NO_VALID_RECORDS'))
             return dict(_dbt_transform_result=True, status='SUCCESS', staging=staging_result,
-                        staging_signature=before, dbt=dict(status='SKIPPED', reason='NO_VALID_RECORDS'))
+                        staging_signature=before, config_hash=config_hash,
+                        recompute_config=False,
+                        dbt=dict(status='SKIPPED', reason='NO_VALID_RECORDS'))
+        if recompute_config:
+            progress('METADATA CONFIG CHANGED: recomputing dbt staging & DWH models with updated rules/KPIs.')
         dbt_env = dict(environment, STEAM_CHANGE_BATCH=batch_id or '',
                        STEAM_CHANGE_LSET=str(window['lset']) if window else '',
-                       STEAM_CHANGE_CET=str(window['cet']) if window else '')
+                       STEAM_CHANGE_CET=str(window['cet']) if window else '',
+                       STEAM_RECOMPUTE_CONFIG='1' if recompute_config else '')
         dbt = build_dbt(project_root, dbt_env,
                         executable=executable,
-                        timeout_seconds=timeout_seconds, progress=progress)
+                        timeout_seconds=timeout_seconds,
+                        vars=dbt_vars,
+                        progress=progress)
         if before != staging_signature(connection):
             raise RuntimeError('Staging changed during dbt build; rerun the pipeline')
         audit(connection, 'steam_dbt_transform', 'SUCCESS', int(before[0]), step='dbt',
               context=context, started_at=started_at, dbt_tests=dbt['tests'],
               metrics=dict(models=dbt['models'], tests=dbt['tests'], total=dbt['total'],
+                           recompute_config=recompute_config, dbt_vars=dbt_vars,
                            **(window or {})))
         return dict(_dbt_transform_result=True, status='SUCCESS', staging=staging_result,
-                    staging_signature=before, dbt=dbt)
+                    staging_signature=before, config_hash=config_hash,
+                    recompute_config=recompute_config, dbt=dbt)
     except Exception as exc:
         prefix = failure(connection, 'steam_dbt_transform', exc, progress, step='dbt',
                          context=context, started_at=started_at)
@@ -171,6 +200,9 @@ def check_results(transform_result, *, connect, progress=print):
         audit(connection, 'steam_dwh_check', 'SUCCESS', report['row_counts']['fact_game_snapshot'],
               completed_batch=batch_id, step='check', context=context, started_at=started_at,
               checks_failed=0, metrics=check_metrics(report))
+        if transform_result.get('config_hash'):
+            set_applied_config_hash(connection, transform_result['config_hash'])
+            connection.commit()
         if window:
             report['incremental']['lset_after'] = window['cet']
             progress(f"WATERMARK COMMITTED: LSET={window['lset']} -> {window['cet']}, CET={window['cet']}")

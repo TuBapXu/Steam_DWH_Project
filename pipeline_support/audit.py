@@ -73,9 +73,12 @@ def write_audit(connection, *, pipeline_name, step, status, records_processed=0,
 
 def staging_metrics(result):
     """Audit fields for a staging result produced by dynamic_chunks.finalize."""
-    rejected = int(result.get('parser_rejected') or 0) + int(result.get('bad_keys') or 0)
-    keys = ('source_records', 'rows_read', 'parser_rejected', 'bad_keys', 'bad_dates',
-            'cleaned_rows', 'duplicates', 'chunks', 'outcome', 'lset', 'cet', 'batch_id', 'resumed')
+    rejected = (int(result.get('parser_rejected') or 0)
+                + int(result.get('bad_keys') or 0)
+                + int(result.get('rule_rejected') or 0))
+    keys = ('source_records', 'rows_read', 'parser_rejected', 'bad_keys', 'rule_rejected',
+            'bad_dates', 'cleaned_rows', 'duplicates', 'chunks', 'outcome', 'lset', 'cet',
+            'batch_id', 'resumed')
     if result.get('run_mode') == 'full':
         # A full load replaces staging: every accepted record is (re)inserted.
         changes = dict(inserted=result.get('records_processed'), updated=0, unchanged=0)
