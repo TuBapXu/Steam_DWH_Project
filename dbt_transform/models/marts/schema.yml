@@ -143,6 +143,8 @@ models:
           - not_null
           - accepted_values:
               arguments: {values: ['AAA', 'Indie', 'Unknown']}
+              config:
+                tags: ['demo_core']
 
   - name: fact_game_snapshot
     description: >
@@ -163,12 +165,18 @@ models:
       - name: game_key
         description: "FK → dim_game.game_key. Không NULL (INNER JOIN với dim_game)."
         data_tests:
-          - unique
-          - not_null
+          - unique:
+              config:
+                tags: ['demo_core']
+          - not_null:
+              config:
+                tags: ['demo_core']
           - relationships:
               arguments:
                 to: ref('dim_game')
                 field: game_key
+              config:
+                tags: ['demo_core']
       - name: platform_key
         description: "FK → dim_platform.platform_key. Không NULL (INNER JOIN với dim_platform)."
         data_tests:

@@ -1,3 +1,4 @@
+{{ config(tags=['demo_core']) }}
 {% set free_max_price = var('kpi_free_max_price', 0) %}
 {% set free_include_100 = var('kpi_free_include_100_discount', false) %}
 {% set ratio_formula = var('kpi_positive_ratio_formula', 'STANDARD') %}

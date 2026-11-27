@@ -30,15 +30,21 @@ models:
         data_tests:
           - accepted_values:
               arguments: {values: [0, 1], quote: false}
+              config:
+                tags: ['demo_core']
       - name: price
         description: "Giữ NULL nếu thiếu hoặc âm; không suy diễn thành miễn phí."
         data_tests:
           - valid_range:
               arguments: {rule_var: 'rule_price_non_negative'}
+              config:
+                tags: ['demo_core']
       - name: discount_percentage
         data_tests:
           - valid_range:
               arguments: {min_value: 0, max_value: 100, rule_var: 'rule_discount_range'}
+              config:
+                tags: ['demo_core']
       - name: positive_reviews
         data_tests: [valid_range]
       - name: negative_reviews

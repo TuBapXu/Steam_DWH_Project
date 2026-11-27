@@ -33,7 +33,8 @@ def stop_process(process):
 
 
 def build_dbt(project_root, environment, *, executable=None, timeout_seconds=3600,
-              vars=None, full_refresh=False, exclude=None, threads=1, progress=print):
+              vars=None, full_refresh=False, select=None, exclude=None,
+              indirect_selection=None, threads=1, progress=print):
     if isinstance(timeout_seconds, bool) or int(timeout_seconds) != float(timeout_seconds):
         raise ValueError('dbt_timeout_seconds must be a positive integer')
     timeout_seconds = int(timeout_seconds)
@@ -58,6 +59,10 @@ def build_dbt(project_root, environment, *, executable=None, timeout_seconds=360
                '--profiles-dir', str(project), '--target', 'dev', '--threads', str(int(threads))]
     if full_refresh:
         command.append('--full-refresh')
+    if indirect_selection:
+        command.extend(['--indirect-selection', str(indirect_selection)])
+    if select:
+        command.extend(['--select', *(select if isinstance(select, (list, tuple)) else [str(select)])])
     if exclude:
         command.extend(['--exclude', str(exclude)])
     if vars:

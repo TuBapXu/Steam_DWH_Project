@@ -133,12 +133,13 @@ def run_transform(staging_result, *, project_root, connect, environment,
                        STEAM_CHANGE_CET=str(window['cet']) if window else '',
                        STEAM_RECOMPUTE_CONFIG='1' if recompute_config else '')
         if fast_demo:
-            progress('FAST DEMO MODE: skipping tag:demo_heavy dbt tests and using 4 threads.')
+            progress('FAST DEMO MODE: building all 9 models with core DWH tests only (tag:demo_core, 4 threads).')
         dbt = build_dbt(project_root, dbt_env,
                         executable=executable,
                         timeout_seconds=timeout_seconds,
                         vars=dbt_vars,
-                        exclude='tag:demo_heavy' if fast_demo else None,
+                        select=['resource_type:model', 'tag:demo_core'] if fast_demo else None,
+                        indirect_selection='empty' if fast_demo else None,
                         threads=4 if fast_demo else 1,
                         progress=progress)
         if before != staging_signature(connection):
