@@ -15,7 +15,11 @@ models:
               arguments: {min_value: 1}
       - name: game_title
         description: "Tên thiếu được thay bằng Unknown game <AppID>; có cờ is_title_missing."
-        data_tests: [not_null, normalized_text]
+        data_tests:
+          - not_null
+          - normalized_text:
+              config:
+                tags: ['demo_heavy']
       - name: is_title_missing
         data_tests:
           - not_null
@@ -26,15 +30,21 @@ models:
         data_tests:
           - accepted_values:
               arguments: {values: [0, 1], quote: false}
+              config:
+                tags: ['demo_core']
       - name: price
         description: "Giữ NULL nếu thiếu hoặc âm; không suy diễn thành miễn phí."
         data_tests:
           - valid_range:
               arguments: {rule_var: 'rule_price_non_negative'}
+              config:
+                tags: ['demo_core']
       - name: discount_percentage
         data_tests:
           - valid_range:
               arguments: {min_value: 0, max_value: 100, rule_var: 'rule_discount_range'}
+              config:
+                tags: ['demo_core']
       - name: positive_reviews
         data_tests: [valid_range]
       - name: negative_reviews
@@ -50,25 +60,52 @@ models:
               arguments: {min_value: 1, max_value: 100, rule_var: 'rule_metacritic_range'}
       - name: user_score
         description: "Giữ nguyên thang điểm nguồn; giá trị <= 0 được xem là chưa có điểm."
-        data_tests: [valid_range]
+        data_tests:
+          - valid_range:
+              config:
+                tags: ['demo_heavy']
       - name: required_age
-        data_tests: [valid_range]
+        data_tests:
+          - valid_range:
+              config:
+                tags: ['demo_heavy']
       - name: dlc_count
-        data_tests: [valid_range]
+        data_tests:
+          - valid_range:
+              config:
+                tags: ['demo_heavy']
       - name: achievements_count
-        data_tests: [valid_range]
+        data_tests:
+          - valid_range:
+              config:
+                tags: ['demo_heavy']
       - name: recommendations_count
-        data_tests: [valid_range]
+        data_tests:
+          - valid_range:
+              config:
+                tags: ['demo_heavy']
       - name: peak_ccu
         data_tests: [valid_range]
       - name: avg_playtime_forever_mins
-        data_tests: [valid_range]
+        data_tests:
+          - valid_range:
+              config:
+                tags: ['demo_heavy']
       - name: avg_playtime_two_weeks_mins
-        data_tests: [valid_range]
+        data_tests:
+          - valid_range:
+              config:
+                tags: ['demo_heavy']
       - name: median_playtime_forever_mins
-        data_tests: [valid_range]
+        data_tests:
+          - valid_range:
+              config:
+                tags: ['demo_heavy']
       - name: median_playtime_two_weeks_mins
-        data_tests: [valid_range]
+        data_tests:
+          - valid_range:
+              config:
+                tags: ['demo_heavy']
       - name: release_month
         data_tests:
           - valid_range:
@@ -86,12 +123,27 @@ models:
           - accepted_values:
               arguments: {values: [0, 1], quote: false}
       - name: developers
-        data_tests: [normalized_text]
+        data_tests:
+          - normalized_text:
+              config:
+                tags: ['demo_heavy']
       - name: publishers
-        data_tests: [normalized_text]
+        data_tests:
+          - normalized_text:
+              config:
+                tags: ['demo_heavy']
       - name: categories
-        data_tests: [normalized_text]
+        data_tests:
+          - normalized_text:
+              config:
+                tags: ['demo_heavy']
       - name: genres
-        data_tests: [normalized_text]
+        data_tests:
+          - normalized_text:
+              config:
+                tags: ['demo_heavy']
       - name: tags
-        data_tests: [normalized_text]
+        data_tests:
+          - normalized_text:
+              config:
+                tags: ['demo_heavy']

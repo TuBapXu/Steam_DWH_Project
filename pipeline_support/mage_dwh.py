@@ -86,7 +86,7 @@ def failure(connection, pipeline_name, exc, progress, *, step='pipeline', contex
 
 
 def run_transform(staging_result, *, project_root, connect, environment,
-                  executable=None, timeout_seconds=3600, progress=print):
+                  executable=None, timeout_seconds=3600, fast_demo=False, progress=print):
     if not isinstance(staging_result, dict) or staging_result.get('status') != 'SUCCESS' or not (
             staging_result.get('_full_load_result') or staging_result.get('_staging_result')):
         raise ValueError('Run the staging and audit blocks successfully before dbt')
@@ -132,10 +132,15 @@ def run_transform(staging_result, *, project_root, connect, environment,
                        STEAM_CHANGE_LSET=str(window['lset']) if window else '',
                        STEAM_CHANGE_CET=str(window['cet']) if window else '',
                        STEAM_RECOMPUTE_CONFIG='1' if recompute_config else '')
+        if fast_demo:
+            progress('FAST DEMO MODE: building all 9 models with core DWH tests only (tag:demo_core, 4 threads).')
         dbt = build_dbt(project_root, dbt_env,
                         executable=executable,
                         timeout_seconds=timeout_seconds,
                         vars=dbt_vars,
+                        select=['resource_type:model', 'tag:demo_core'] if fast_demo else None,
+                        indirect_selection='empty' if fast_demo else None,
+                        threads=4 if fast_demo else 1,
                         progress=progress)
         if before != staging_signature(connection):
             raise RuntimeError('Staging changed during dbt build; rerun the pipeline')

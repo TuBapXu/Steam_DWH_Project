@@ -138,6 +138,7 @@ type: python
 uuid: steam_staging_pipeline
 variables:
   chunk_size: 1000
+  dbt_fast_demo: false
   dbt_timeout_seconds: 3600
   demo_cet: null
   demo_lset: null

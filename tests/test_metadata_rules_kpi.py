@@ -248,8 +248,16 @@ class MetadataRulesAndKpiTests(unittest.TestCase):
             return orig_popen(['python', str(fake_script), *cmd[1:]], **kwargs)
 
         with patch('pipeline_support.dbt_runner.subprocess.Popen', side_effect=capture_popen):
-            build_dbt(self.tmp_root, {}, executable='fake-dbt', vars={'kpi_publisher_aaa_min_games': 5}, progress=lambda _: None)
+            build_dbt(self.tmp_root, {}, executable='fake-dbt', vars={'kpi_publisher_aaa_min_games': 5},
+                      select=['resource_type:model', 'tag:demo_core'], indirect_selection='empty',
+                      threads=4, progress=lambda _: None)
         self.assertIn('--vars', seen_cmds[0])
+        self.assertIn('--indirect-selection', seen_cmds[0])
+        self.assertEqual(seen_cmds[0][seen_cmds[0].index('--indirect-selection') + 1], 'empty')
+        self.assertIn('--select', seen_cmds[0])
+        sel_idx = seen_cmds[0].index('--select')
+        self.assertEqual(seen_cmds[0][sel_idx + 1:sel_idx + 3], ['resource_type:model', 'tag:demo_core'])
+        self.assertEqual(seen_cmds[0][seen_cmds[0].index('--threads') + 1], '4')
         idx = seen_cmds[0].index('--vars')
         self.assertEqual(json.loads(seen_cmds[0][idx + 1]), {'kpi_publisher_aaa_min_games': 5})
 

@@ -15,7 +15,9 @@ def run_dbt_transform(staging_result, *args, **kwargs):
         sys.path.insert(0, str(root))
     from pipeline_support.mage_dwh import mage_context, run_transform
     root, connect, environment = mage_context()
+    fast_demo = str(kwargs.get('dbt_fast_demo', False)).strip().lower() in ('1', 'true', 'yes')
     return run_transform(staging_result, project_root=root, connect=connect,
                          environment=environment,
                          timeout_seconds=kwargs.get('dbt_timeout_seconds', 3600),
+                         fast_demo=fast_demo,
                          progress=lambda message: print(message, flush=True))
